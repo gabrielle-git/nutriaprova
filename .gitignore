@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment / secrets locais — nunca commitar.
+# (o `.env` da raiz tem apenas chaves públicas do Vite/Supabase e pode ficar
+#  versionado; segredos reais vão em `.env.local` / `.env.*.local`.)
+.env.local
+.env.*.local
+# Dados persistidos localmente por Docker volumes (caso alguém use bind mount).
+docker-data/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

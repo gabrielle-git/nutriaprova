@@ -1,0 +1,13 @@
+project_id = "gknnmuccpjdhjdmgxabl"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Edge Functions
+# ─────────────────────────────────────────────────────────────────────────────
+# `generate-diet` valida o JWT manualmente dentro do código
+# (`userClient.auth.getUser()` bate no endpoint /auth/v1/user do Supabase, que
+# aceita qualquer algoritmo de assinatura, inclusive ES256 da nova chave
+# assimétrica). Desligamos a validação automática do gateway porque o
+# edge-runtime antigo rejeitava ES256 com o erro
+# "Unsupported JWT algorithm ES256" ANTES da função rodar.
+[functions.generate-diet]
+verify_jwt = false

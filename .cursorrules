@@ -1,0 +1,97 @@
+# nutrIAprova — Diretrizes do Projeto
+
+> Regras vinculantes para qualquer agente/Cursor trabalhando neste repositório.
+> Em caso de conflito entre uma instrução do usuário e uma regra abaixo, **pergunte** antes de quebrar a regra.
+
+---
+
+## REGRA DE OURO — AUTH (definitiva e intocável)
+
+> Pedido explícito da Gabs: **o modelo de rotas atual e o layout de Login/Auth são DEFINITIVOS**.
+> Não refatore, não "melhore", não simplifique sem autorização escrita.
+
+**Nunca altere a lógica de rotas** dos arquivos abaixo sem pedido explícito do usuário em texto claro:
+
+- `src/pages/AuthCallback.tsx` — função `decideRoute(...)` e o fluxo do `useEffect` (exchange code → getSession → upsert do `pendingSignup` → fetch profile → navigate).
+- `src/pages/Auth.tsx` — leitura do parâmetro `?role=` da URL, abertura automática do modo cadastro quando vier `?role=` ou `?openRegister=true`, e o `useEffect` que escreve `setPendingSignup` quando `openRegister=true`.
+- `src/pages/Index.tsx` — `useLayoutEffect` que chama `clearPendingSignup()` na Home.
+- `src/components/RouteGuard.tsx` — separação entre `missingAuth` (→ `/auth`) e `roleMismatch` (→ `/`). **Nunca** unifique de novo num único `<Navigate to="/auth">`: isso recria o loop com o redirect de sessão ativa do `Auth.tsx`.
+
+O contrato é literal:
+
+1. **A Home (`/`) sempre limpa `nutriaprova:pendingSignup` do localStorage** antes da primeira pintura. Não introduza nenhum efeito que dependa desse storage sobreviver à Home.
+2. **O fluxo de role via URL (`?role=client | nutritionist | personal_trainer`)** é a fonte de verdade para a tela `/auth`. Quem decide o que carimbar no `pendingSignup` é o `Auth.tsx` — **nunca** a Home, nunca o `LandingHero.tsx`.
+3. **O `AuthCallback.tsx` decide a rota apenas com base em `profile.role` (banco) com fallback para `user.user_metadata.role`.** Não reintroduza "hard guards" (ex.: forçar `/onboarding` por `pendingRole === "nutritionist"`). O `pendingSignup` no callback serve **apenas** para um upsert único e é limpo em seguida.
+
+Se um bug exigir tocar nesses arquivos, **explique a hipótese antes de editar** e mantenha o contrato acima.
+
+---
+
+## UI PERSISTENCE — Tela de Auth
+
+- O formulário de autenticação (`src/pages/Auth.tsx`) **deve sempre exibir as 3 opções de papel** quando estiver em modo cadastro: Paciente (`client`), Nutricionista (`nutritionist`) e Personal (`personal_trainer`).
+- O parâmetro `?role=` na URL **apenas pré-seleciona** a opção correspondente. **Nunca esconda** as outras duas, nunca remova o seletor, nunca substitua a tela por uma versão "específica do papel".
+- **Nunca pule a tela `/auth`** com base em intenção pendente (`pendingSignup`) sem confirmação explícita do usuário (clique em botão visível). Se houver sessão ativa real, o redirect para `/auth/callback` é permitido — esse é um caso de sessão, não de intenção.
+- **Não introduza redirects automáticos** disparados por `localStorage`/`sessionStorage` na Home, na `/auth` ou em qualquer landing pública. Toda navegação para área autenticada deve ser consequência de:
+  - clique do usuário; **ou**
+  - resultado do `AuthCallback` após sessão real do Supabase.
+- **Auto-redirect de sessão ativa em `/auth` é condicional:** o `useEffect` "sessão ativa → manda para o dashboard" só dispara quando a URL **não** tem `?role=` nem `?openRegister=true`. Quando esses parâmetros estão presentes, a usuária está deliberadamente na tela (vinda de uma landing ou trocando de papel) e o formulário deve permanecer visível com as 3 opções. Não remova essa exceção.
+- **Landings públicas (`/para-nutricionistas`, `/personal-trainer`)** são sempre acessíveis, com ou sem sessão. Não envolva em `RouteGuard`, não adicione `useEffect` que redirecione com base em `useAuth()`.
+
+---
+
+## REGRA DE OURO — IA / GERAÇÃO DE DIETAS (n8n local, definitiva e intocável)
+
+> Pedido explícito da Gabs: **a arquitetura de IA foi migrada para um servidor n8n local**.
+> O fluxo de geração e ajuste de dietas **NUNCA, SOB NENHUMA HIPÓTESE**, deve voltar para o Supabase / Edge Function / Gemini direto.
+
+**Fonte única de verdade para chamadas de IA:** `src/services/n8nService.ts`, apontando para `http://localhost:5678/webhook/generate-diet`.
+
+**Proibido (hard block — não edite sem pedido explícito em texto):**
+
+1. Alterar `src/services/n8nService.ts` — nem a URL do webhook, nem o shape do body (`{ action: "generate" | "adjust", clientData | currentPlan, instruction }`), nem o tratamento de erro (`logN8nError`, `throw new Error`).
+2. Trocar a porta/host `localhost:5678` por qualquer outro endpoint (Supabase, Gemini, OpenAI, API própria, etc.) sem autorização escrita.
+3. Reintroduzir imports de `@/services/aiDietService` em qualquer componente. Os consumidores abaixo **devem continuar importando de `@/services/n8nService`**:
+   - `src/components/ClientOnboarding.tsx` (botão "Gerar Meu Plano" — onboarding inicial)
+   - `src/components/ClientDashboard.tsx` (botão "Gerar Meu Plano" — replano)
+   - `src/components/NutritionistDashboard.tsx` (`adjustDietWithAI`)
+   - `src/components/AdminSimulationView.tsx` (`adjustDietWithAI`)
+   - `src/components/PremiumDietPlanView.tsx`, `src/components/DietPlanCard.tsx`, `src/components/GroceryChecklist.tsx`, `src/components/ClientCompletedDiet.tsx`, `src/pages/AdminSupremo.tsx` (consumidores de `type DietPlan`).
+4. "Reverter para Supabase" / "usar a Edge Function" / "usar o `aiDietService.ts`" **não é uma correção válida** para nenhum bug. Se a requisição ao n8n falhar, o problema é do lado do n8n (webhook desligado, CORS, payload) — investigue lá, não troque a fonte.
+5. Chamar `supabase.functions.invoke("generate-diet", ...)` em qualquer componente novo ou existente.
+
+**Permitido sem pedir:**
+
+- Alterações de **UI/UX** nos componentes que consomem `DietPlan` (layout, cores, textos, animações, estados de loading/erro, validações de formulário, ordenação de refeições visível, etc.).
+- Ajustar mensagens de erro mostradas ao usuário — desde que a chamada HTTP ao n8n permaneça inalterada.
+- Criar novos componentes que consumam o `DietPlan` retornado pelo `n8nService`.
+
+**Contrato do JSON retornado pelo n8n** (quebrar isso quebra a UI):
+
+- `DietPlan` tem 5 chaves fixas em `meals`: `cafeDaManha`, `lancheDaManha`, `almoco`, `lancheDaTarde`, `jantar`.
+- Campos numéricos (`totalCalories`, `calories`, `protein`, `carbs`, `fat`) **devem** ser `number`, não string.
+- `ingredients` é sempre `string[]`.
+- `instructions` deve vir numerada no formato `"1. passo. 2. passo. 3. passo."` — o `PremiumDietPlanView` faz `split(/(?=\d+\.\s)/)` nela.
+
+Arquivos **depreciados** (mantidos apenas como histórico, não importar, não editar para "corrigir"):
+`src/services/aiDietService.ts`, `supabase/functions/generate-diet/index.ts`.
+
+---
+
+## [ARQUIVADA] EDGE FUNCTIONS — `generate-diet` (Supabase/Gemini)
+
+> **OBSOLETO — NÃO USAR.** Esta seção descreve a arquitetura antiga (Supabase Edge + Gemini direto), substituída pelo n8n local (ver "REGRA DE OURO — IA" acima). Mantida somente como registro histórico. **Não siga estas instruções para novas tarefas.** Nenhum componente do frontend ainda importa `aiDietService.ts`.
+
+- ~~**Segredo:** a função `supabase/functions/generate-diet/index.ts` usa `Deno.env.get("GEMINI_API_KEY")`.~~
+- ~~**Modelo Gemini:** lido de `Deno.env.get("GEMINI_MODEL")` com default `gemini-1.5-flash`.~~
+- ~~**Endpoint Gemini:** `https://generativelanguage.googleapis.com/v1/models/${GEMINI_MODEL}:generateContent`.~~
+- ~~**JWT verification:** HS256/anon key padrão do Supabase em dev.~~
+- ~~**Logs:** `logEdgeError` no cliente (`src/services/aiDietService.ts`).~~
+
+---
+
+## Convenções gerais
+
+- Linguagem dos comentários e mensagens de UI: **português (pt-BR)**.
+- Antes de editar arquivos protegidos pela "REGRA DE OURO — AUTH", sempre rodar `npm run build` ao final para garantir que nada quebrou tipo/lint.
+- Não introduza dependências novas para resolver problemas que dão para resolver com o stack atual (React 18, React Router DOM, Supabase JS, shadcn/ui, date-fns).
