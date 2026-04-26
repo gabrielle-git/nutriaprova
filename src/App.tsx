@@ -29,6 +29,7 @@ import NutriBemVindo from "./pages/NutriBemVindo";
 import BemVindoPersonal from "./pages/BemVindoPersonal"; // boas-vindas do personal
 import PersonalDashboard from "./pages/PersonalDashboard"; // dashboard real com Supabase
 import ClientDashboardPage from "./pages/ClientDashboardPage";
+import ClientQuestionnairePage from "./pages/ClientQuestionnairePage";
 import NutriDashboardPage from "./pages/NutriDashboardPage";
 
 // Admin
@@ -88,6 +89,11 @@ function AnimatedRoutes() {
       <Route path="/dashboard" element={
         <RouteGuard allow={["client", "admin"]}>
           <PageTransition><ClientDashboardPage /></PageTransition>
+        </RouteGuard>
+      } />
+      <Route path="/questionnaire" element={
+        <RouteGuard allow={["client", "admin"]}>
+          <PageTransition><ClientQuestionnairePage /></PageTransition>
         </RouteGuard>
       } />
       <Route path="/nutri-dashboard" element={

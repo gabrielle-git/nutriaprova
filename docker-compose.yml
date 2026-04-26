@@ -1,5 +1,5 @@
 # =============================================================================
-# NutrIAprova — Stack de Infraestrutura Local (Fase 1, "Modo Deus")
+# nutrIAprova — Stack de Infraestrutura Local (Fase 1, "Modo Deus")
 # -----------------------------------------------------------------------------
 # Objetivo: subir todo o ecossistema de dados + IA local em Docker para que o
 # backend futuro (Express em /api — ainda não criado nesta fase) consuma tudo
@@ -17,7 +17,7 @@
 
 services:
   # ─────────────────────────────────────────────────────────────────────────
-  # Postgres da APLICAÇÃO NutrIAprova (futuro substituto do Supabase Cloud).
+  # Postgres da APLICAÇÃO nutrIAprova (futuro substituto do Supabase Cloud).
   # Exposto em 5433 no host para não colidir com um Postgres local em 5432.
   # ─────────────────────────────────────────────────────────────────────────
   nutriaprova-db:

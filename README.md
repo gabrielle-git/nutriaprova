@@ -1,4 +1,4 @@
-# 🍏 NutriAprova
+# 🍏 nutrIAprova
 
 Plataforma SaaS inteligente para nutricionistas e pacientes, integrando geração de planos alimentares via IA com uma experiência de usuário premium.
 

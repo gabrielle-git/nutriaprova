@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,10 +103,12 @@ const mergeClientData = (
 
 export default function ClientOnboarding() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [dietPlan, setDietPlan] = useState<DietPlan | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [dietRequestId, setDietRequestId] = useState<string | null>(null);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   // Observação: `gender` começa vazio e é narrowed para
   // "masculino" | "feminino" apenas após validação (ver guard em handleGenerate).
@@ -242,7 +245,29 @@ export default function ClientOnboarding() {
     };
 
     try {
-      // 1) Chamada à IA via n8n — protegida por try/catch dedicado para que
+      // 1) Registra a tentativa imediatamente no funil para recuperação de carrinho.
+      const { data: createdRequest, error: createError } = await supabase
+        .from("diet_requests")
+        .insert({
+          client_id: user.id,
+          client_data: dataToSend as any,
+          status: "awaiting_payment",
+          notes: "Questionário enviado. Aguardando processamento da IA.",
+        } as any)
+        .select("id")
+        .single();
+
+      if (createError || !createdRequest?.id) {
+        console.error("[handleGenerate] create diet_request falhou:", createError);
+        toast.error("Não foi possível iniciar seu plano. Tente novamente.");
+        setStep(2);
+        return;
+      }
+
+      const requestId = String(createdRequest.id);
+      setDietRequestId(requestId);
+
+      // 2) Chamada à IA via n8n — protegida por try/catch dedicado para que
       //    uma falha de rede/timeout não quebre a árvore de componentes.
       let plan: DietPlan;
       try {
@@ -254,48 +279,54 @@ export default function ClientOnboarding() {
         toast.error(
           "Sistema indisponível: Não foi possível gerar o plano no momento. Tente novamente.",
         );
+        await supabase
+          .from("diet_requests")
+          .update({
+            notes: "Falha ao gerar dieta via IA. Tentar novamente.",
+          } as any)
+          .eq("id", requestId);
         setStep(2);
         return;
       }
 
-      // 2) Persistência no Supabase — erros aqui NÃO devem derrubar a UI.
+      // 3) Atualiza o registro já criado com o plano pronto para paywall.
       try {
         const { data: myProfile } = await (supabase as any)
           .from("profiles")
           .select("referred_by, client_data")
           .eq("user_id", user.id)
           .maybeSingle();
-        const assigned = (myProfile as any)?.referred_by || null;
+        const assigned = (myProfile as any)?.referred_by ?? null;
+        const { error: updateRequestError } = await supabase
+          .from("diet_requests")
+          .update({
+            ai_draft: plan as any,
+            assigned_nutritionist_id: assigned,
+            notes: "Plano gerado. Aguardando pagamento para desbloqueio.",
+          } as any)
+          .eq("id", requestId);
 
-        const { error: insertError } = await supabase.from("diet_requests").insert({
-          client_id: user.id,
-          client_data: dataToSend as any,
-          ai_draft: plan as any,
-          status: "pending",
-          assigned_nutritionist_id: assigned,
-        } as any);
-
-        if (insertError) {
-          console.error("[handleGenerate] diet_requests insert error:", insertError);
+        if (updateRequestError) {
+          console.error("[handleGenerate] diet_requests update error:", updateRequestError);
           toast.error("Plano gerado, mas houve erro ao salvar. Tente novamente.");
-        } else {
-          const previousClientData = ((myProfile as any)?.client_data ?? {}) as Record<string, any>;
-          const { error: profileError } = await (supabase as any)
-            .from("profiles")
-            .update({
-              birth_date: dataToSend.birthDate,
-              client_data: {
-                ...previousClientData,
-                ...dataToSend,
-              },
-            })
-            .eq("user_id", user.id);
-
-          if (profileError) {
-            console.warn("[handleGenerate] profiles client_data update:", profileError.message);
-          }
-          toast.success("Plano gerado e enviado para validação!");
         }
+
+        const previousClientData = ((myProfile as any)?.client_data ?? {}) as Record<string, any>;
+        const { error: profileError } = await (supabase as any)
+          .from("profiles")
+          .update({
+            birth_date: dataToSend.birthDate,
+            client_data: {
+              ...previousClientData,
+              ...dataToSend,
+            },
+          })
+          .eq("user_id", user.id);
+
+        if (profileError) {
+          console.warn("[handleGenerate] profiles client_data update:", profileError.message);
+        }
+        toast.success("Plano gerado! Desbloqueie para continuar.");
       } catch (dbError: any) {
         console.error("[handleGenerate] Supabase falhou:", dbError);
         toast.error("Plano gerado, mas não conseguimos salvar. Tente novamente.");
@@ -571,7 +602,7 @@ export default function ClientOnboarding() {
                   <Sparkles className="h-10 w-10 text-primary animate-pulse" />
                 </div>
                 <h2 className="text-2xl font-display font-bold mb-2">Gerando seu plano...</h2>
-                <p className="text-muted-foreground">Nossa IA está criando uma dieta personalizada para você</p>
+                <p className="text-muted-foreground">Nossa IA está processando seus dados...</p>
                 <div className="mt-6 w-64 mx-auto h-2 bg-muted rounded-full overflow-hidden">
                   <motion.div
                     className="h-full emerald-gradient rounded-full"
@@ -606,8 +637,8 @@ export default function ClientOnboarding() {
                      </div>
                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/60 backdrop-blur-sm rounded-lg">
                        <Lock className="h-8 w-8 text-primary mb-3" />
-                       <p className="font-display font-semibold text-lg mb-1">Plano Pronto!</p>
-                       <p className="text-sm text-muted-foreground mb-4">Validado por nutricionista com CRN</p>
+                       <p className="font-display font-semibold text-lg mb-1">Seu plano de alta performance está pronto e guardado.</p>
+                       <p className="text-sm text-muted-foreground mb-4">Desbloqueie agora para começar sua transformação.</p>
                        <Button
                          onClick={() => setCheckoutOpen(true)}
                          className="emerald-gradient text-primary-foreground text-base px-6 py-3 h-auto"
@@ -635,7 +666,16 @@ export default function ClientOnboarding() {
         )}
       </AnimatePresence>
 
-      <CheckoutModal open={checkoutOpen} onOpenChange={setCheckoutOpen} amount={39.9} />
+      <CheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        amount={39.9}
+        onApproved={() => {
+          if (dietRequestId) {
+            navigate("/dashboard", { replace: true });
+          }
+        }}
+      />
     </div>
   );
 }

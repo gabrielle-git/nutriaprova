@@ -1,4 +1,5 @@
-const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/14ec514d-532c-417f-a5ba-0c425afe93a8';
+const N8N_GENERATE_WEBHOOK_URL = 'http://localhost:5678/webhook/gerar-dieta';
+const N8N_ADJUST_WEBHOOK_URL = 'http://localhost:5678/webhook/ajustar-dieta';
 
 export interface ClientData {
   age: number;
@@ -44,17 +45,22 @@ async function logN8nError(label: string, error: unknown, data: unknown) {
   });
 }
 
+async function postToN8n(url: string, payload: Record<string, unknown>) {
+  // Contrato explícito com o n8n: sempre POST com JSON no body.
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function generateDietPlan(clientData: ClientData): Promise<DietPlan> {
   try {
-    const response = await fetch(N8N_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'generate',
-        clientData,
-      }),
+    const response = await postToN8n(N8N_GENERATE_WEBHOOK_URL, {
+      action: 'generate',
+      clientData,
     });
 
     if (!response.ok) {
@@ -77,16 +83,10 @@ export async function generateDietPlan(clientData: ClientData): Promise<DietPlan
 
 export async function adjustDietWithAI(currentPlan: DietPlan, instruction: string): Promise<DietPlan> {
   try {
-    const response = await fetch(N8N_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'adjust',
-        currentPlan,
-        instruction,
-      }),
+    const response = await postToN8n(N8N_ADJUST_WEBHOOK_URL, {
+      action: 'adjust',
+      currentPlan,
+      instruction,
     });
 
     if (!response.ok) {

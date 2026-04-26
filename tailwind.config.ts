@@ -14,8 +14,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "sans-serif"],
-        display: ["Space Grotesk", "sans-serif"],
+        sans: ["DM Sans", "sans-serif"],
+        display: ["Plus Jakarta Sans", "sans-serif"],
+        mono: ["JetBrains Mono", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -73,6 +74,12 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        card: "0 1px 3px hsl(0 0% 0% / 0.04), 0 4px 16px hsl(0 0% 0% / 0.06)",
+        "card-hover": "0 2px 8px hsl(0 0% 0% / 0.06), 0 12px 32px hsl(158 72% 32% / 0.10)",
+        btn: "0 2px 8px hsl(158 72% 32% / 0.35)",
+        "btn-hover": "0 6px 20px hsl(158 72% 32% / 0.45)",
       },
       keyframes: {
         "accordion-down": {

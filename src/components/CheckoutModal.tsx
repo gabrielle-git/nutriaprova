@@ -37,7 +37,7 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
 
   const simulateApproval = async () => {
     setProcessing(true);
-    // Mock: advance the user's most recent pending diet to "processing_ai"
+    // Mock: avanço do funil após pagamento (processing -> pending/in_review do nutri).
     if (user) {
       const { data: latest } = await supabase
         .from("diet_requests")
@@ -49,8 +49,16 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
       if (id) {
         await supabase
           .from("diet_requests")
-          .update({ status: "processing_ai", notes: "Pagamento aprovado (simulado)" })
+          .update({ status: "processing", notes: "Pagamento aprovado (simulado). Processando IA." } as any)
           .eq("id", id);
+
+        // Simula o avanço do processamento para etapa de validação nutricional.
+        setTimeout(async () => {
+          await supabase
+            .from("diet_requests")
+            .update({ status: "pending", notes: "Pagamento confirmado. Aguardando validação nutricional." } as any)
+            .eq("id", id);
+        }, 3000);
       }
 
       // Registra conversão no painel de Performance de Convites: se o cliente

@@ -30,3 +30,4 @@ docker-data/
 *.njsproj
 *.sln
 *.sw?
+*.env

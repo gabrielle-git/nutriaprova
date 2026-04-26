@@ -4,7 +4,7 @@
 --
 -- Idempotente: todas as criações usam IF NOT EXISTS / DROP + CREATE / CREATE OR
 -- REPLACE / DO blocks para que `supabase db push` possa ser re-executado em um
--- banco que já tenha o schema aplicado (ex.: via Lovable/Studio) sem falhar.
+-- banco que já tenha o schema aplicado manualmente/Studio sem falhar.
 -- =============================================================================
 
 -- ── Tabelas ────────────────────────────────────────────────────────────────────

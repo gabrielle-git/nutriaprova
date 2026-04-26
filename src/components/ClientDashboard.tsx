@@ -11,7 +11,6 @@ import {
   Apple,
   CreditCard,
   Lock,
-  QrCode,
   Utensils,
   CheckCircle2,
   Eye,
@@ -46,57 +45,31 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { supabase } from "@/integrations/supabase/client";
 import type { DietPlan } from "@/services/n8nService";
 import PremiumDietPlanView from "./PremiumDietPlanView";
-import ClientOnboarding from "./ClientOnboarding";
 import DietProgressTracker from "./DietProgressTracker";
 import AppHeader from "./AppHeader";
+import CheckoutModal from "./CheckoutModal";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Histórico mockado — substituir por fetch real quando a feature for ativada.
-// ─────────────────────────────────────────────────────────────────────────────
 type HistoryEntry = {
   id: string;
   generatedAt: string;
   goal: string;
   calories: number;
-  status: "completed" | "archived";
+  status:
+    | "awaiting_payment"
+    | "processing"
+    | "pending"
+    | "awaiting_validation"
+    | "in_review"
+    | "completed"
+    | string;
+  plan: DietPlan | null;
 };
-
-const MOCK_HISTORY: HistoryEntry[] = [
-  {
-    id: "hist-001",
-    generatedAt: "2026-02-15T10:30:00.000Z",
-    goal: "Perda de Peso",
-    calories: 1_800,
-    status: "completed",
-  },
-  {
-    id: "hist-002",
-    generatedAt: "2025-11-03T14:05:00.000Z",
-    goal: "Ganho de Massa Muscular",
-    calories: 2_400,
-    status: "completed",
-  },
-  {
-    id: "hist-003",
-    generatedAt: "2025-07-22T09:15:00.000Z",
-    goal: "Reeducação Alimentar",
-    calories: 2_000,
-    status: "archived",
-  },
-];
 
 const GOAL_OPTIONS = [
   { value: "perder_peso", label: "Perda de Peso", emoji: "🏃" },
@@ -125,8 +98,14 @@ type CurrentPlanState =
   | { status: "empty" }
   | {
       status: "ready";
-      plan: DietPlan;
-      requestStatus: "pending" | "in_review" | "completed";
+      plan: DietPlan | null;
+      requestStatus:
+        | "awaiting_payment"
+        | "processing"
+        | "pending"
+        | "awaiting_validation"
+        | "in_review"
+        | "completed";
       isCompleted: boolean;
     };
 
@@ -136,6 +115,43 @@ function formatHistoryDate(iso: string): string {
     month: "long",
     year: "numeric",
   });
+}
+
+function normalizeGoalValue(goal: unknown): string {
+  const firstGoal = Array.isArray(goal) ? goal[0] : String(goal || "").split(",")[0];
+  const normalized = String(firstGoal || "").trim();
+  if (!normalized) return "";
+
+  const byValue = GOAL_OPTIONS.find((option) => option.value === normalized);
+  if (byValue) return byValue.value;
+
+  const byLabel = GOAL_OPTIONS.find(
+    (option) => option.label.toLowerCase() === normalized.toLowerCase(),
+  );
+  return byLabel?.value ?? normalized;
+}
+
+function formatGoalLabel(goal: unknown): string {
+  const values = String(Array.isArray(goal) ? goal.join(", ") : goal || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (values.length === 0) return "Plano alimentar";
+
+  return values
+    .map((value) => GOAL_OPTIONS.find((option) => option.value === value)?.label ?? value)
+    .join(", ");
+}
+
+function formatRequestStatus(status: string) {
+  if (status === "completed") return "Concluído";
+  if (status === "awaiting_payment") return "Pagamento pendente";
+  if (status === "processing") return "Processando IA";
+  if (status === "awaiting_validation") return "Aguardando validação";
+  if (status === "in_review") return "Em análise";
+  if (status === "pending") return "Pendente";
+  return status;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,13 +183,14 @@ export default function ClientDashboard() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"plan" | "history" | "settings">("plan");
   const [current, setCurrent] = useState<CurrentPlanState>({ status: "loading" });
-  const [showWizard, setShowWizard] = useState(false);
+  const [hasCompletedPlans, setHasCompletedPlans] = useState(false);
   const [currentClientData, setCurrentClientData] = useState<Record<string, any>>({});
 
   // ── Perfil editável — hidratado diretamente do Supabase.
   // `profiles.client_data` é a fonte principal; o último diet_request serve como
   // fallback para usuários que geraram plano antes dessa coluna existir.
   const [profileForm, setProfileForm] = useState({
+    gender: "",
     weight: "",
     height: "",
     goal: "",
@@ -236,9 +253,13 @@ export default function ClientDashboard() {
 
       setCurrentClientData({ ...latestClientData, ...profileClientData });
       setProfileForm({
+        gender:
+          read("gender") === "masculino" || read("gender") === "feminino"
+            ? String(read("gender"))
+            : "",
         weight: read("weight") ? String(read("weight")) : "",
         height: read("height") ? String(read("height")) : "",
-        goal: Array.isArray(goal) ? goal.join(", ") : String(goal || ""),
+        goal: normalizeGoalValue(goal),
         bodyFat: read("bodyFat") ? String(read("bodyFat")) : "",
         allergies,
       });
@@ -282,20 +303,28 @@ export default function ClientDashboard() {
       // portanto ele representa tanto o rascunho quanto a versão final.
       const row = data as unknown as
         | {
-            status: "pending" | "in_review" | "completed";
+            status:
+              | "awaiting_payment"
+              | "processing"
+              | "pending"
+              | "awaiting_validation"
+              | "in_review"
+              | "completed";
             ai_draft: DietPlan | null;
           }
         | null;
 
-      const plan = row?.ai_draft ?? null;
-      if (!row || !plan) {
+      if (!row) {
         setCurrent({ status: "empty" });
+        if (profile?.role === "client") {
+          navigate("/questionnaire", { replace: true });
+        }
         return;
       }
 
       setCurrent({
         status: "ready",
-        plan,
+        plan: row.ai_draft ?? null,
         requestStatus: row.status,
         isCompleted: row.status === "completed",
       });
@@ -321,6 +350,33 @@ export default function ClientDashboard() {
       cancelled = true;
       supabase.removeChannel(channel);
     };
+  }, [user, navigate, profile?.role]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    const fetchCompletedFlag = async () => {
+      const { data, error } = await supabase
+        .from("diet_requests")
+        .select("id")
+        .eq("client_id", user.id)
+        .eq("status", "completed")
+        .limit(1);
+
+      if (cancelled) return;
+      if (error) {
+        console.warn("[ClientDashboard] completed flag fetch:", error.message);
+        return;
+      }
+
+      setHasCompletedPlans((data ?? []).length > 0);
+    };
+
+    void fetchCompletedFlag();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -336,6 +392,7 @@ export default function ClientDashboard() {
     // lida pelo useEffect acima, então o form continua consistente após F5.
     const payload = {
       ...currentClientData,
+      gender: profileForm.gender,
       weight: profileForm.weight,
       height: profileForm.height,
       goal: profileForm.goal,
@@ -357,6 +414,7 @@ export default function ClientDashboard() {
 
       // Atualiza o contexto global de auth para que outros componentes
       // (ex: Configurações, Onboarding) vejam os dados mais recentes.
+      setCurrentClientData(payload);
       await refreshProfile();
       toast.success("Dados atualizados com sucesso!");
     } catch (err) {
@@ -389,7 +447,9 @@ export default function ClientDashboard() {
               Olá, {firstName}
             </h1>
             <p className="text-muted-foreground text-sm md:text-base max-w-xl">
-              Acompanhe seu plano alimentar, revise seu histórico e mantenha seu perfil sempre atualizado.
+              {hasCompletedPlans
+                ? "Suas metas não param. Vamos ajustar sua rota para o próximo nível?"
+                : "Responda ao questionário e acompanhe cada etapa até o desbloqueio do seu plano personalizado."}
             </p>
           </div>
 
@@ -437,11 +497,7 @@ export default function ClientDashboard() {
 
           {/* ─────────── ABA 1 — MEU PLANO ATUAL ─────────── */}
           <TabsContent value="plan" className="mt-6 focus-visible:ring-0">
-            <CurrentPlanTab
-              state={current}
-              showWizard={showWizard}
-              onStartWizard={() => setShowWizard(true)}
-            />
+            <CurrentPlanTab state={current} hasCompletedPlans={hasCompletedPlans} />
           </TabsContent>
 
           {/* ─────────── ABA 2 — HISTÓRICO ─────────── */}
@@ -469,14 +525,11 @@ export default function ClientDashboard() {
 // ═════════════════════════════════════════════════════════════════════════════
 function CurrentPlanTab({
   state,
-  showWizard,
-  onStartWizard,
+  hasCompletedPlans,
 }: {
   state: CurrentPlanState;
-  showWizard: boolean;
-  onStartWizard: () => void;
+  hasCompletedPlans: boolean;
 }) {
-  const [isPaid, setIsPaid] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
 
   if (state.status === "loading") {
@@ -490,41 +543,33 @@ function CurrentPlanTab({
     );
   }
 
-  // Quando não há plano e a usuária já clicou no CTA, renderiza o wizard
-  // legado (ClientOnboarding). Ele preserva integralmente o fluxo de IA via n8n.
-  if (state.status === "empty" && showWizard) {
-    return (
-      <div className="rounded-2xl border border-border/50 bg-card/40 backdrop-blur-sm p-2 md:p-4">
-        <ClientOnboarding />
-      </div>
-    );
-  }
-
   if (state.status === "empty") {
-    return <EmptyPlanState onStart={onStartWizard} />;
+    return <EmptyPlanState hasCompletedPlans={hasCompletedPlans} />;
   }
 
   // state.status === "ready"
   const { plan, requestStatus, isCompleted } = state;
-  const shouldShowPaywall = isCompleted && !isPaid;
+  const shouldShowPaywall = requestStatus === "awaiting_payment";
 
   return (
     <div className="space-y-4">
-      {!isCompleted && (
+      {!isCompleted && requestStatus !== "awaiting_payment" && (
         <div className="rounded-xl border border-primary/30 bg-accent/30 p-4 flex items-start gap-3">
           <Lock className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-display font-semibold text-sm">
-              {requestStatus === "in_review"
+              {requestStatus === "in_review" || requestStatus === "awaiting_validation"
                 ? "Seu plano está em análise pelo nutricionista."
-                : "Seu plano já foi gerado e aguarda a validação do profissional."}
+                : "Seu pagamento foi aprovado e agora estamos processando seu plano com IA."}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Assim que for liberado, você verá a versão completa aqui mesmo.
+              Acompanhe o tracker de status até a liberação da versão completa.
             </p>
           </div>
           <Badge variant="outline" className="uppercase text-[10px] tracking-wider">
-            {requestStatus === "in_review" ? "Em análise" : "Pendente"}
+            {requestStatus === "in_review" || requestStatus === "awaiting_validation"
+              ? "Em análise"
+              : "Processando"}
           </Badge>
         </div>
       )}
@@ -546,10 +591,10 @@ function CurrentPlanTab({
                     Plano validado
                   </p>
                   <h2 className="font-display text-2xl md:text-3xl font-bold mt-2">
-                    Seu plano 100% personalizado está pronto!
+                    Seu plano de alta performance está pronto e guardado.
                   </h2>
                   <p className="text-sm text-muted-foreground mt-3">
-                    Desbloqueie agora o cardápio completo, receitas detalhadas, macros e lista de compras.
+                    Desbloqueie agora para começar sua transformação.
                   </p>
                   <Button
                     type="button"
@@ -568,13 +613,12 @@ function CurrentPlanTab({
             </div>
           </div>
 
-          <MockPaymentDialog
+          <CheckoutModal
             open={paymentOpen}
             onOpenChange={setPaymentOpen}
-            onApprove={() => {
-              setIsPaid(true);
-              setPaymentOpen(false);
-              toast.success("Pagamento aprovado! Seu cardápio foi desbloqueado.");
+            amount={39.9}
+            onApproved={() => {
+              toast.success("Pagamento aprovado! Agora estamos processando seu plano.");
             }}
           />
         </>
@@ -585,90 +629,9 @@ function CurrentPlanTab({
   );
 }
 
-function MockPaymentDialog({
-  open,
-  onOpenChange,
-  onApprove,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onApprove: () => void;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader className="text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Lock className="h-6 w-6" />
-          </div>
-          <DialogTitle className="font-display text-2xl">
-            Desbloquear cardápio completo
-          </DialogTitle>
-          <DialogDescription>
-            Escolha uma forma de pagamento para liberar seu plano validado agora.
-          </DialogDescription>
-        </DialogHeader>
+function EmptyPlanState({ hasCompletedPlans }: { hasCompletedPlans: boolean }) {
+  const navigate = useNavigate();
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <QrCode className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-display font-semibold">Pix</p>
-                <p className="text-xs text-muted-foreground">Aprovação instantânea</p>
-              </div>
-            </div>
-            <div className="rounded-lg border border-dashed border-primary/30 bg-card/70 p-4 text-center text-xs text-muted-foreground">
-              QR Code mockado para demonstração
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border/70 bg-card/60 p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <CreditCard className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-display font-semibold">Cartão de Crédito</p>
-                <p className="text-xs text-muted-foreground">Visa, Mastercard e Elo</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="h-9 rounded-md border border-border bg-background/70" />
-              <div className="grid grid-cols-2 gap-2">
-                <div className="h-9 rounded-md border border-border bg-background/70" />
-                <div className="h-9 rounded-md border border-border bg-background/70" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl bg-accent/40 border border-primary/20 p-4 flex items-start gap-3">
-          <CheckCircle2 className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-semibold">Pagamento seguro</p>
-            <p className="text-xs text-muted-foreground">
-              Este modal é um mock local. A aprovação abaixo apenas simula a liberação do cardápio.
-            </p>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          size="lg"
-          onClick={onApprove}
-          className="h-12 w-full emerald-gradient text-primary-foreground font-bold"
-        >
-          Simular Pagamento Aprovado
-        </Button>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EmptyPlanState({ onStart }: { onStart: () => void }) {
   return (
     <Card className="glass-card border-dashed border-2 border-primary/20">
       <CardContent className="py-14 md:py-20 px-6 flex flex-col items-center text-center">
@@ -680,11 +643,14 @@ function EmptyPlanState({ onStart }: { onStart: () => void }) {
         </div>
 
         <h2 className="font-display font-bold text-2xl md:text-3xl mb-2">
-          Vamos criar o seu primeiro plano?
+          {hasCompletedPlans
+            ? "Suas metas não param. Vamos ajustar sua rota para o próximo nível?"
+            : "Vamos iniciar seu questionário personalizado?"}
         </h2>
         <p className="text-muted-foreground max-w-md text-sm md:text-base mb-6">
-          Responda a 3 etapas rápidas — peso, altura, objetivos e restrições — e nossa IA,
-          validada por um nutricionista com CRN, monta uma dieta <strong>100% personalizada</strong> para você.
+          {hasCompletedPlans
+            ? "Responda novamente com seus objetivos atuais para receber uma nova estratégia alimentar com validação profissional."
+            : "Você vai preencher seus dados corporais e objetivos para que nossa IA monte um plano 100% personalizado."}
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-2xl w-full mb-8">
@@ -709,12 +675,12 @@ function EmptyPlanState({ onStart }: { onStart: () => void }) {
         </div>
 
         <Button
-          onClick={onStart}
+          onClick={() => navigate("/questionnaire")}
           size="lg"
           className="emerald-gradient text-primary-foreground gap-2 px-8 h-12 text-base"
         >
           <Sparkles className="h-5 w-5" />
-          Começar meu plano agora
+          {hasCompletedPlans ? "Atualizar metas e gerar novo plano" : "Preencher questionário"}
         </Button>
         <p className="text-[11px] text-muted-foreground mt-4">
           Você não paga nada para gerar. O investimento é só quando o plano for validado.
@@ -724,73 +690,57 @@ function EmptyPlanState({ onStart }: { onStart: () => void }) {
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// ABA — HISTÓRICO (mock)
-// ═════════════════════════════════════════════════════════════════════════════
-// Detalhes mockados por plano — futura substituição por fetch real em
-// diet_requests / diet_plans_history. A ação de ABRIR o modal já é real.
-const MOCK_HISTORY_DETAILS: Record<
-  string,
-  {
-    nutritionist: string;
-    proteinGrams: number;
-    carbsGrams: number;
-    fatGrams: number;
-    water: string;
-    observations: string;
-    meals: { name: string; summary: string }[];
-  }
-> = {
-  "hist-001": {
-    nutritionist: "Dra. Helena Gabs — CRN-3 12345",
-    proteinGrams: 130,
-    carbsGrams: 170,
-    fatGrams: 60,
-    water: "2,5 L/dia",
-    observations:
-      "Foco em déficit calórico moderado de ~500 kcal/dia com priorização de proteína magra.",
-    meals: [
-      { name: "Café da Manhã", summary: "Omelete + fruta + café sem açúcar" },
-      { name: "Almoço", summary: "Frango grelhado, arroz integral e salada" },
-      { name: "Lanche", summary: "Iogurte natural com chia" },
-      { name: "Jantar", summary: "Peixe assado com legumes no vapor" },
-    ],
-  },
-  "hist-002": {
-    nutritionist: "Dr. Pedro Souza — CRN-8 98765",
-    proteinGrams: 180,
-    carbsGrams: 300,
-    fatGrams: 80,
-    water: "3,0 L/dia",
-    observations:
-      "Plano para hipertrofia com 300 kcal de superávit e foco em carboidratos pós-treino.",
-    meals: [
-      { name: "Café da Manhã", summary: "Aveia, banana, whey e pasta de amendoim" },
-      { name: "Almoço", summary: "Arroz + feijão + carne vermelha magra" },
-      { name: "Pré-treino", summary: "Batata-doce e peito de frango" },
-      { name: "Jantar", summary: "Salmão + quinoa + brócolis" },
-    ],
-  },
-  "hist-003": {
-    nutritionist: "Dra. Helena Gabs — CRN-3 12345",
-    proteinGrams: 110,
-    carbsGrams: 220,
-    fatGrams: 70,
-    water: "2,8 L/dia",
-    observations:
-      "Reeducação alimentar com comidas do dia-a-dia e foco em fibras.",
-    meals: [
-      { name: "Café da Manhã", summary: "Tapioca com frango desfiado e café" },
-      { name: "Almoço", summary: "Prato tradicional brasileiro balanceado" },
-      { name: "Lanche", summary: "Fruta + castanhas" },
-      { name: "Jantar", summary: "Sopa de legumes + proteína magra" },
-    ],
-  },
-};
-
 function HistoryTab() {
+  const { user } = useAuth();
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<HistoryEntry | null>(null);
-  const details = selected ? MOCK_HISTORY_DETAILS[selected.id] : null;
+
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    const fetchHistory = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("diet_requests")
+        .select("id, status, client_data, ai_draft, created_at")
+        .eq("client_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+
+      if (error) {
+        console.warn("[ClientDashboard] history fetch:", error.message);
+        setHistory([]);
+        setLoading(false);
+        return;
+      }
+
+      const entries = ((data ?? []) as any[])
+        .map((row) => {
+          const plan = (row.ai_draft as DietPlan | null) ?? null;
+          return {
+            id: String(row.id),
+            generatedAt: String(row.created_at),
+            goal: formatGoalLabel(row.client_data?.goal),
+            calories: Number(plan?.totalCalories || 0),
+            status: String(row.status || "pending"),
+            plan,
+          };
+        });
+
+      setHistory(entries);
+      setLoading(false);
+    };
+
+    void fetchHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   return (
     <>
@@ -807,18 +757,23 @@ function HistoryTab() {
             </CardDescription>
           </div>
           <Badge variant="outline" className="hidden md:inline-flex">
-            {MOCK_HISTORY.length} registros
+            {history.length} registros
           </Badge>
         </div>
       </CardHeader>
       <CardContent>
-        {MOCK_HISTORY.length === 0 ? (
+        {loading ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <p className="text-sm">Carregando histórico...</p>
+          </div>
+        ) : history.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground text-sm">
             Seu histórico aparecerá aqui assim que você concluir um plano.
           </div>
         ) : (
           <div className="space-y-3">
-            {MOCK_HISTORY.map((entry) => (
+            {history.map((entry) => (
               <div
                 key={entry.id}
                 className="group rounded-xl border border-border/60 bg-card/60 hover:border-primary/40 hover:bg-accent/20 transition-all p-4 flex flex-col md:flex-row md:items-center gap-4"
@@ -836,41 +791,41 @@ function HistoryTab() {
                       variant={entry.status === "completed" ? "default" : "secondary"}
                       className="text-[10px] uppercase tracking-wider"
                     >
-                      {entry.status === "completed" ? "Concluído" : "Arquivado"}
+                      {formatRequestStatus(entry.status)}
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Gerado em {formatHistoryDate(entry.generatedAt)}
                   </p>
+                  {entry.status === "awaiting_payment" && (
+                    <p className="text-xs text-primary mt-1 font-medium">
+                      Quase lá! Finalize seu acesso para liberar sua dieta.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-4">
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Calorias/dia</p>
                     <p className="font-display font-bold text-lg leading-tight">
-                      {entry.calories.toLocaleString("pt-BR")}
+                      {entry.calories > 0 ? entry.calories.toLocaleString("pt-BR") : "--"}
                     </p>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     className="gap-2 opacity-80 group-hover:opacity-100"
+                    disabled={!entry.plan}
                     onClick={() => setSelected(entry)}
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    Visualizar
+                    {entry.plan ? "Visualizar" : "Aguardando IA"}
                   </Button>
                 </div>
               </div>
             ))}
           </div>
         )}
-
-        <div className="mt-6 text-center">
-          <p className="text-[11px] text-muted-foreground">
-            📌 Dados ilustrativos — a sincronização com planos reais será ativada em breve.
-          </p>
-        </div>
       </CardContent>
     </Card>
 
@@ -887,67 +842,11 @@ function HistoryTab() {
           </SheetDescription>
         </SheetHeader>
 
-        {selected && details && (
+        {selected && (
           <div className="mt-6 space-y-5">
-            {/* Cabeçalho numérico */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="rounded-lg border border-border/60 bg-card/60 p-3 text-center">
-                <p className="text-[11px] text-muted-foreground">Calorias/dia</p>
-                <p className="font-display font-bold text-lg">
-                  {selected.calories.toLocaleString("pt-BR")}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card/60 p-3 text-center">
-                <p className="text-[11px] text-muted-foreground">Proteínas</p>
-                <p className="font-display font-bold text-lg">{details.proteinGrams}g</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card/60 p-3 text-center">
-                <p className="text-[11px] text-muted-foreground">Carbos</p>
-                <p className="font-display font-bold text-lg">{details.carbsGrams}g</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card/60 p-3 text-center">
-                <p className="text-[11px] text-muted-foreground">Gorduras</p>
-                <p className="font-display font-bold text-lg">{details.fatGrams}g</p>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-primary/20 bg-accent/30 p-4 space-y-1">
-              <p className="text-xs uppercase tracking-widest text-primary font-semibold">
-                Nutricionista Responsável
-              </p>
-              <p className="font-display font-semibold">{details.nutritionist}</p>
-              <p className="text-xs text-muted-foreground">
-                Hidratação recomendada: <strong>{details.water}</strong>
-              </p>
-            </div>
-
-            <div>
-              <h3 className="font-display font-semibold text-sm mb-2">Refeições</h3>
-              <div className="space-y-2">
-                {details.meals.map((meal) => (
-                  <div
-                    key={meal.name}
-                    className="rounded-lg border border-border/60 bg-card/40 p-3 flex items-start gap-3"
-                  >
-                    <Utensils className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-sm">{meal.name}</p>
-                      <p className="text-xs text-muted-foreground">{meal.summary}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-display font-semibold text-sm mb-2">Observações</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {details.observations}
-              </p>
-            </div>
-
+            <PremiumDietPlanView plan={selected.plan} isCompleted={selected.status === "completed"} />
             <p className="text-[11px] text-muted-foreground border-t border-border/50 pt-3">
-              📌 Visualização somente leitura. Para gerar um novo plano, volte à aba
+              Visualização somente leitura. Para gerar um novo plano, volte à aba
               <strong> Meu Plano Atual</strong>.
             </p>
           </div>
@@ -962,6 +861,7 @@ function HistoryTab() {
 // ABA — CONFIGURAÇÕES & PERFIL
 // ═════════════════════════════════════════════════════════════════════════════
 type ProfileForm = {
+  gender: string;
   weight: string;
   height: string;
   goal: string;
@@ -999,6 +899,19 @@ function SettingsTab({
           <form onSubmit={onSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-1.5">
+                <Label>Gênero</Label>
+                <Select value={form.gender} onValueChange={(v) => update({ gender: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione seu gênero" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="feminino">Feminino</SelectItem>
+                    <SelectItem value="masculino">Masculino</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
                 <Label htmlFor="dash-weight">Peso atual (kg)</Label>
                 <Input
                   id="dash-weight"
@@ -1009,6 +922,9 @@ function SettingsTab({
                   onChange={(e) => update({ weight: e.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="space-y-1.5">
                 <Label htmlFor="dash-height">Altura (cm)</Label>
                 <Input
@@ -1020,25 +936,25 @@ function SettingsTab({
                   onChange={(e) => update({ height: e.target.value })}
                 />
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <Label>Objetivo atual</Label>
-              <Select value={form.goal} onValueChange={(v) => update({ goal: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione seu objetivo principal" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GOAL_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      <span className="inline-flex items-center gap-2">
-                        <span>{opt.emoji}</span>
-                        <span>{opt.label}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <Label>Objetivo atual</Label>
+                <Select value={form.goal} onValueChange={(v) => update({ goal: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione seu objetivo principal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GOAL_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        <span className="inline-flex items-center gap-2">
+                          <span>{opt.emoji}</span>
+                          <span>{opt.label}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-1.5">

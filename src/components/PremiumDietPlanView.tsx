@@ -15,7 +15,7 @@ const MEAL_LABELS: Record<string, { label: string; emoji: string; time: string }
 };
 
 interface PremiumDietPlanViewProps {
-  plan: DietPlan;
+  plan?: DietPlan | null;
   nutritionistName?: string;
   crnNumber?: string;
   specialty?: string;
@@ -37,17 +37,32 @@ export default function PremiumDietPlanView({
   clinicLogoUrl = null,
   professionalTier = null,
 }: PremiumDietPlanViewProps) {
+  if (!plan || !plan.meals) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card/70 p-8 md:p-10">
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="w-10 h-10 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+          <p className="font-display font-semibold text-base">Preparando seu plano alimentar...</p>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Estamos aguardando os dados da dieta para renderizar as refeições e os macronutrientes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const showClinicLogo = professionalTier === "clinic" && !!clinicLogoUrl;
-  const totalProtein = Object.values(plan.meals).reduce((s, m) => s + m.protein, 0);
-  const totalCarbs = Object.values(plan.meals).reduce((s, m) => s + m.carbs, 0);
-  const totalFat = Object.values(plan.meals).reduce((s, m) => s + m.fat, 0);
+  const meals = Object.values(plan.meals ?? {});
+  const totalProtein = meals.reduce((s, m) => s + (m?.protein ?? 0), 0);
+  const totalCarbs = meals.reduce((s, m) => s + (m?.carbs ?? 0), 0);
+  const totalFat = meals.reduce((s, m) => s + (m?.fat ?? 0), 0);
   const totalCal = plan.totalCalories;
 
   // Macro percentages for visual chart
   const totalMacroGrams = totalProtein + totalCarbs + totalFat;
-  const protPct = Math.round((totalProtein / totalMacroGrams) * 100);
-  const carbPct = Math.round((totalCarbs / totalMacroGrams) * 100);
-  const fatPct = 100 - protPct - carbPct;
+  const protPct = totalMacroGrams > 0 ? Math.round((totalProtein / totalMacroGrams) * 100) : 0;
+  const carbPct = totalMacroGrams > 0 ? Math.round((totalCarbs / totalMacroGrams) * 100) : 0;
+  const fatPct = totalMacroGrams > 0 ? 100 - protPct - carbPct : 0;
 
   const date = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 

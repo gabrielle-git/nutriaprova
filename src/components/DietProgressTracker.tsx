@@ -4,24 +4,25 @@ import { useEffect, useId, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, Bot, Search, PartyPopper, Clock } from "lucide-react";
+import { CheckCircle2, Search, Lock, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type DietRequest = any;
 
 const STEPS = [
   { key: "paid", label: "Pagamento Confirmado", Icon: CheckCircle2 },
-  { key: "ai", label: "Processando Inteligência Artificial", Icon: Bot },
-  { key: "review", label: "Em Análise pelo Nutricionista", Icon: Search },
-  { key: "done", label: "Dieta Liberada!", Icon: PartyPopper },
+  { key: "ai", label: "Processando IA", Icon: Loader2 },
+  { key: "review", label: "Validação Nutricionista (CRN)", Icon: Search },
+  { key: "done", label: "Download Liberado", Icon: Lock },
 ];
 
 function statusToStep(status: string): number {
   // 0 = paid, 1 = AI processing, 2 = nutri review, 3 = done
   if (status === "completed") return 3;
-  if (status === "in_review") return 2;
-  if (status === "pending") return 1; // AI already produced draft, awaiting nutri pickup
-  return 0;
+  if (status === "in_review" || status === "pending" || status === "awaiting_validation") return 2;
+  if (status === "processing") return 1;
+  // Antes do pagamento não exibimos tracker pós-pagamento.
+  return -1;
 }
 
 export default function DietProgressTracker() {
@@ -41,7 +42,7 @@ export default function DietProgressTracker() {
         .from("diet_requests")
         .select("*")
         .eq("client_id", user.id)
-        .in("status", ["pending", "in_review"])
+        .in("status", ["processing", "pending", "in_review", "awaiting_validation", "completed"])
         .order("created_at", { ascending: false });
       if (!cancelled && data) setActiveRequests(data);
     };
@@ -75,11 +76,12 @@ export default function DietProgressTracker() {
     };
   }, [user, instanceId]);
 
-  if (activeRequests.length === 0) return null;
+  const visibleRequests = activeRequests.filter((req) => statusToStep(req.status) >= 0);
+  if (visibleRequests.length === 0) return null;
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
-      {activeRequests.map((req) => {
+      {visibleRequests.map((req) => {
         const currentStep = statusToStep(req.status);
         return (
           <Card key={req.id} className="glass-card border-primary/30">
@@ -111,7 +113,7 @@ export default function DietProgressTracker() {
                             !isDone && !isActive && "bg-muted text-muted-foreground"
                           )}
                         >
-                          <Icon className="h-5 w-5" />
+                          <Icon className={cn("h-5 w-5", isActive && step.key === "ai" && "animate-spin")} />
                         </div>
                         <div className="md:text-center">
                           <p

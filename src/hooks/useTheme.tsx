@@ -16,7 +16,7 @@ function getSystemTheme(): "light" | "dark" {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = localStorage.getItem("nutrIAprova-theme") as Theme | null;
+    const stored = localStorage.getItem("nutriaprova-theme") as Theme | null;
     return stored || "light";
   });
 
@@ -26,7 +26,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(resolvedTheme);
-    localStorage.setItem("nutrIAprova-theme", theme);
+    localStorage.setItem("nutriaprova-theme", theme);
   }, [theme, resolvedTheme]);
 
   useEffect(() => {
