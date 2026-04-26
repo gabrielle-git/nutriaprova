@@ -6,18 +6,18 @@
 
 @layer base {
   :root {
-    --primary: 158 72% 32%;
-    --primary-light: 158 65% 42%;
-    --primary-glow: 158 80% 55%;
-    --surface-0: 0 0% 100%;
-    --surface-1: 150 30% 98%;
-    --surface-2: 150 20% 95%;
-    --surface-3: 150 15% 91%;
-    --ink-1: 160 45% 8%;
-    --ink-2: 160 20% 30%;
-    --ink-3: 160 10% 55%;
-    --gold: 42 95% 52%;
-    --gold-light: 42 90% 92%;
+    --primary: 158 72% 32%; /* esmeralda profundo */
+    --primary-light: 158 65% 42%; /* esmeralda medio */
+    --primary-glow: 158 80% 55%; /* esmeralda brilho */
+    --surface-0: 0 0% 100%; /* branco puro */
+    --surface-1: 150 30% 98%; /* branco levemente verde */
+    --surface-2: 150 20% 95%; /* superficie suave */
+    --surface-3: 150 15% 91%; /* borda sutil */
+    --ink-1: 160 45% 8%; /* texto principal escuro */
+    --ink-2: 160 20% 30%; /* texto secundario */
+    --ink-3: 160 10% 55%; /* texto terciario/placeholder */
+    --gold: 42 95% 52%; /* dourado para premium/coins */
+    --gold-light: 42 90% 92%; /* fundo badge gold */
     --danger: 0 78% 54%;
     --warn: 36 95% 52%;
     --info: 217 85% 55%;
@@ -66,6 +66,7 @@
   }
 
   .dark {
+    /* superficies e tinta para dark mode clinico */
     --surface-0: 162 25% 6%;
     --surface-1: 162 22% 9%;
     --surface-2: 162 18% 13%;
@@ -115,6 +116,8 @@
     font-family: "DM Sans", sans-serif;
     font-weight: 400;
     letter-spacing: -0.005em;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "liga" 1, "kern" 1;
   }
   h1,
   h2,
@@ -249,6 +252,10 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
     pointer-events: none;
     border-radius: inherit;
+  }
+  .noise {
+    position: relative;
+    isolation: isolate;
   }
 
   /* Retrocompatibilidade visual com classes existentes no app */
