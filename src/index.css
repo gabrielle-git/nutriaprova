@@ -80,9 +80,6 @@
     --card-foreground: var(--ink-1);
     --popover: var(--surface-1);
     --popover-foreground: var(--ink-1);
-    --primary: 158 72% 36%;
-    --primary-light: 158 65% 45%;
-    --primary-glow: 158 80% 58%;
     --primary-foreground: 0 0% 100%;
     --secondary: var(--surface-2);
     --secondary-foreground: var(--ink-1);
