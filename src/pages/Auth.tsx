@@ -1,17 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
-} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  Leaf, Stethoscope, User, Dumbbell, ArrowLeft,
+  ArrowLeft, Check, Dumbbell, Leaf, Stethoscope, User, Loader2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { maskPhone, unmaskPhone, maskCRN, isCRNValid } from "@/lib/masks";
 import { setPendingSignup, clearPendingSignup } from "@/lib/pendingSignup";
@@ -19,6 +18,86 @@ import { trackInviteEvent } from "@/services/inviteAnalytics";
 
 type AuthMethod = "email" | "phone";
 type AuthStep   = "form" | "otp";
+
+const authInputClassName = cn(
+  "h-11 w-full rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-background px-3 py-0 text-sm text-[hsl(var(--ink-1))] shadow-sm transition-colors",
+  "font-sans placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:text-[hsl(var(--ink-3))]",
+  "hover:border-[hsl(var(--surface-2))]",
+  "focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+);
+
+const authLabelClass = "text-[13px] font-medium leading-none text-[hsl(var(--ink-2))] font-sans mb-1 block";
+
+const BRAND_TESTIMONIAL = {
+  name: "Marina Costa",
+  role: "Clienta há 8 meses",
+  quote: "Nunca pensei que seguir um plano pudesse ser tão simples. A IA acelera e meu nutri valida tudo.",
+  avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&h=120&fit=crop",
+} as const;
+
+function BrandingPanel() {
+  return (
+    <aside className="bg-hero text-[hsl(var(--ink-1))] relative hidden w-[45%] min-h-screen flex-col justify-between p-10 md:flex">
+      <div>
+        <div className="flex items-center gap-2.5">
+          <Leaf className="h-9 w-9 shrink-0 text-primary" strokeWidth={1.75} />
+          <span className="font-display text-[2.5rem] font-extrabold leading-tight text-brand">
+            NutrIAprova
+          </span>
+        </div>
+        <p className="mt-2 max-w-sm font-sans text-base font-normal text-[hsl(var(--ink-2))]">
+          Nutrição clínica com inteligência artificial e validação humana.
+        </p>
+        <div className="my-8 h-px w-full max-w-sm bg-[hsl(var(--surface-3))]" />
+        <ul className="max-w-sm space-y-3">
+          {[
+            "Plano alimentar gerado por IA em segundos",
+            "Acompanhamento real com seu nutricionista",
+            "Resultados comprovados por +2.000 usuários",
+          ].map((line) => (
+            <li key={line} className="flex gap-2.5 font-sans text-sm font-normal text-[hsl(var(--ink-2))]">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <figure className="mt-8 rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]/60 p-4 backdrop-blur-sm">
+        <blockquote className="font-sans text-sm leading-relaxed text-[hsl(var(--ink-2))]">
+          “{BRAND_TESTIMONIAL.quote}”
+        </blockquote>
+        <figcaption className="mt-3 flex items-center gap-3">
+          <img
+            src={BRAND_TESTIMONIAL.avatarUrl}
+            alt=""
+            className="h-11 w-11 rounded-full object-cover ring-2 ring-primary/15"
+            width={44}
+            height={44}
+          />
+          <div>
+            <p className="font-sans text-sm font-semibold text-[hsl(var(--ink-1))]">
+              {BRAND_TESTIMONIAL.name}
+            </p>
+            <p className="font-sans text-xs text-[hsl(var(--ink-3))]">
+              {BRAND_TESTIMONIAL.role}
+            </p>
+          </div>
+        </figcaption>
+      </figure>
+    </aside>
+  );
+}
+
+function GoogleSeparator() {
+  return (
+    <div className="relative my-6 flex items-center py-0.5">
+      <div className="h-px flex-1 bg-[hsl(var(--surface-3))]" />
+      <span className="px-3 font-sans text-sm text-[hsl(var(--ink-3))]">ou</span>
+      <div className="h-px flex-1 bg-[hsl(var(--surface-3))]" />
+    </div>
+  );
+}
 
 export default function Auth() {
   const location       = useLocation();
@@ -69,6 +148,8 @@ export default function Auth() {
   const [loading, setLoading]           = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emailServiceNotice, setEmailServiceNotice] = useState(false);
+  const formSubmitLockRef = useRef(false);
+  const googleClickLockRef = useRef(false);
 
   // OTP
   const [otpCode, setOtpCode]           = useState("");
@@ -93,26 +174,26 @@ export default function Auth() {
     if (profile) {
       if (profile.role === "nutritionist") {
         const crnOk = profile.crn_number && isCRNValid(profile.crn_number.trim());
-        navigate(crnOk ? "/nutri-dashboard" : "/onboarding", { replace: true });
+        navigate(crnOk ? "/inicio" : "/onboarding", { replace: true });
         return;
       }
       if (profile.role === "personal_trainer") {
-        navigate("/personal-dashboard", { replace: true });
+        navigate("/inicio", { replace: true });
         return;
       }
       if (profile.role === "admin") {
-        navigate("/admin", { replace: true });
+        navigate("/inicio", { replace: true });
         return;
       }
-      navigate("/dashboard", { replace: true });
+      navigate("/inicio", { replace: true });
       return;
     }
 
     // Sem perfil (trigger ainda não rodou): usa role do metadata do Supabase
     const metaRole = (user.user_metadata?.role ?? undefined) as string | undefined;
     if (metaRole === "nutritionist") navigate("/onboarding", { replace: true });
-    else if (metaRole === "personal_trainer") navigate("/personal-dashboard", { replace: true });
-    else navigate("/dashboard", { replace: true });
+    else if (metaRole === "personal_trainer") navigate("/inicio", { replace: true });
+    else navigate("/inicio", { replace: true });
   }, [user, profile, navigate, authLoading, location.pathname, searchParams]);
 
   // Abre cadastro quando a URL traz ?openRegister=true OU ?role=...
@@ -142,6 +223,9 @@ export default function Auth() {
 
   // ── Google OAuth ──────────────────────────────────────────────────────────
   const handleGoogleSignIn = async () => {
+    if (googleLoading || loading) return;
+    if (googleClickLockRef.current) return;
+    googleClickLockRef.current = true;
     setGoogleLoading(true);
     try {
       const redirectTo = `${window.location.origin}/auth/callback`;
@@ -168,6 +252,8 @@ export default function Auth() {
       clearPendingSignup();
       toast.error("Erro ao entrar com Google");
       setGoogleLoading(false);
+    } finally {
+      googleClickLockRef.current = false;
     }
   };
 
@@ -334,58 +420,64 @@ export default function Auth() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (googleLoading) return;
-    if (isLogin) {
-      if (authMethod === "email" && password) {
-        setLoading(true);
-        try {
-          await signIn(email, password);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Erro ao entrar";
-          const low = msg.toLowerCase();
+    if (formSubmitLockRef.current) return;
+    formSubmitLockRef.current = true;
+    try {
+      if (isLogin) {
+        if (authMethod === "email" && password) {
+          setLoading(true);
+          try {
+            await signIn(email, password);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Erro ao entrar";
+            const low = msg.toLowerCase();
 
-          // Supabase agrupa "usuária não existe" e "senha errada" no mesmo erro
-          // por questão de segurança (enumeration attack). Exibimos uma mensagem
-          // clara cobrindo ambos os cenários para a Gabs saber o que fazer.
-          if (low.includes("invalid login") || low.includes("invalid credentials")) {
-            toast.error("E-mail ou senha incorretos", {
-              description:
-                "Confira seus dados. Se ainda não tem conta, clique em 'Cadastre-se grátis'. Se esqueceu a senha, use 'Recuperar senha'.",
-            });
-          } else if (low.includes("email not confirmed") || low.includes("confirm")) {
-            toast.error("E-mail ainda não confirmado", {
-              description:
-                "Você recebeu um link por e-mail para confirmar a conta. Verifique a caixa de entrada e o spam.",
-            });
-          } else if (low.includes("too many") || low.includes("rate limit")) {
-            toast.error("Muitas tentativas seguidas", {
-              description: "Aguarde 1 minuto antes de tentar novamente.",
-            });
-          } else if (low.includes("user not found")) {
-            // Raro, mas caso o Supabase retorne esse erro explicitamente.
-            toast.error("Usuária não encontrada", {
-              description:
-                "Este e-mail ainda não tem conta. Clique em 'Cadastre-se grátis' para criar uma.",
-            });
-          } else if (
-            low.includes("network") ||
-            low.includes("failed to fetch") ||
-            low.includes("timeout")
-          ) {
-            toast.error("Falha de conexão", {
-              description: "Verifique sua internet e tente novamente.",
-            });
-          } else {
-            toast.error("Não foi possível entrar", { description: msg });
+            // Supabase agrupa "usuária não existe" e "senha errada" no mesmo erro
+            // por questão de segurança (enumeration attack). Exibimos uma mensagem
+            // clara cobrindo ambos os cenários para a Gabs saber o que fazer.
+            if (low.includes("invalid login") || low.includes("invalid credentials")) {
+              toast.error("E-mail ou senha incorretos", {
+                description:
+                  "Confira seus dados. Se ainda não tem conta, clique em 'Cadastre-se grátis'. Se esqueceu a senha, use 'Recuperar senha'.",
+              });
+            } else if (low.includes("email not confirmed") || low.includes("confirm")) {
+              toast.error("E-mail ainda não confirmado", {
+                description:
+                  "Você recebeu um link por e-mail para confirmar a conta. Verifique a caixa de entrada e o spam.",
+              });
+            } else if (low.includes("too many") || low.includes("rate limit")) {
+              toast.error("Muitas tentativas seguidas", {
+                description: "Aguarde 1 minuto antes de tentar novamente.",
+              });
+            } else if (low.includes("user not found")) {
+              // Raro, mas caso o Supabase retorne esse erro explicitamente.
+              toast.error("Usuária não encontrada", {
+                description:
+                  "Este e-mail ainda não tem conta. Clique em 'Cadastre-se grátis' para criar uma.",
+              });
+            } else if (
+              low.includes("network") ||
+              low.includes("failed to fetch") ||
+              low.includes("timeout")
+            ) {
+              toast.error("Falha de conexão", {
+                description: "Verifique sua internet e tente novamente.",
+              });
+            } else {
+              toast.error("Não foi possível entrar", { description: msg });
+            }
+          } finally {
+            setLoading(false);
           }
-        } finally {
-          setLoading(false);
+        } else {
+          await sendOtp();
         }
       } else {
-        await sendOtp();
+        if (authMethod === "phone") await sendOtp();
+        else await handleSignUp();
       }
-    } else {
-      if (authMethod === "phone") await sendOtp();
-      else await handleSignUp();
+    } finally {
+      formSubmitLockRef.current = false;
     }
   };
 
@@ -401,81 +493,102 @@ export default function Auth() {
   // ── Tela OTP ──────────────────────────────────────────────────────────────
   if (step === "otp") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          aria-label="Voltar"
-          className="fixed top-4 left-4 z-50 flex items-center gap-1.5 rounded-lg
-                     px-3 py-2 text-sm font-medium text-muted-foreground
-                     hover:bg-accent hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar
-        </button>
-        <div className="w-full max-w-md">
-          {/* Logo */}
-          <div className="text-center mb-8">
-            <div
-              className="inline-flex items-center gap-2 mb-4 cursor-pointer"
-              onClick={() => navigate("/")}
-            >
-              <Leaf className="h-8 w-8 text-primary" />
-              <h1 className="text-3xl font-bold font-display">
-                nutr<span className="text-primary">IA</span>prova
-              </h1>
-            </div>
-          </div>
-
-          <Card className="glass-card">
-            <CardHeader>
-              <CardTitle className="font-display text-center">
-                Verifique seu {otpMethod === "email" ? "E-mail" : "Celular"}
-              </CardTitle>
-              <CardDescription className="text-center">
-                Digite o código de 8 dígitos enviado para{" "}
-                <strong>{otpSentTo}</strong>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={8}
-                value={otpCode}
-                onChange={(e) =>
-                  setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
-                }
-                placeholder="00000000"
-                className="text-center text-3xl tracking-[8px] font-bold h-16"
-                autoFocus
-              />
-
-              <Button
-                onClick={verifyOtp}
-                disabled={loading || googleLoading || otpCode.length < 6}
-                className="w-full emerald-gradient text-primary-foreground h-12"
-              >
-                {loading ? "Verificando..." : "Confirmar Código"}
-              </Button>
-
-              <Button
-                variant="ghost"
-                onClick={sendOtp}
-                disabled={loading || googleLoading}
-                className="w-full text-sm text-muted-foreground"
-              >
-                Reenviar código
-              </Button>
-
+      <div className="flex min-h-screen flex-col bg-background md:flex-row">
+        <BrandingPanel />
+        <div className="flex min-h-screen w-full flex-1 items-center justify-center p-4 md:w-[55%]">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            aria-label="Voltar"
+            className="fixed left-4 top-4 z-50 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-[hsl(var(--ink-3))] transition-colors hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--ink-1))]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </button>
+          <motion.div
+            className="mx-auto w-full max-w-sm"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="mb-8 text-center">
               <button
-                onClick={() => { setStep("form"); setOtpCode(""); }}
-                className="text-sm text-muted-foreground hover:underline w-full text-center"
+                type="button"
+                onClick={() => navigate("/")}
+                className="inline-flex cursor-pointer items-center justify-center gap-2"
               >
-                Voltar e corrigir dados
+                <Leaf className="h-8 w-8 text-primary" />
+                <span className="font-display text-2xl font-extrabold text-[hsl(var(--ink-1))]">
+                  nutr<span className="text-primary">IA</span>prova
+                </span>
               </button>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-6 shadow-sm">
+              <h2 className="text-center font-display text-xl font-bold text-[hsl(var(--ink-1))]">
+                Verifique seu {otpMethod === "email" ? "E-mail" : "Celular"}
+              </h2>
+              <p className="mt-1 text-center font-sans text-[0.9rem] text-[hsl(var(--ink-3))]">
+                Digite o código de 8 dígitos enviado para{" "}
+                <span className="font-medium text-[hsl(var(--ink-2))]">{otpSentTo}</span>
+              </p>
+              <div className="mt-6 space-y-4">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={otpCode}
+                  onChange={(e) =>
+                    setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                  }
+                  placeholder="00000000"
+                  className={cn(
+                    authInputClassName,
+                    "h-16 text-center text-3xl font-bold tracking-[8px]",
+                  )}
+                  autoFocus
+                />
+
+                <Button
+                  onClick={verifyOtp}
+                  disabled={loading || googleLoading || otpCode.length < 6}
+                  className={cn(
+                    "btn-primary h-11 w-full gap-2",
+                    "disabled:cursor-wait disabled:opacity-80",
+                  )}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                      Verificando...
+                    </>
+                  ) : (
+                    "Confirmar Código"
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={sendOtp}
+                  disabled={loading || googleLoading}
+                  className="w-full font-sans text-sm text-[hsl(var(--ink-3))] disabled:opacity-60"
+                >
+                  Reenviar código
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep("form");
+                    setOtpCode("");
+                  }}
+                  className="w-full text-center font-sans text-sm text-[hsl(var(--ink-3))] hover:underline"
+                >
+                  Voltar e corrigir dados
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </div>
     );
@@ -483,83 +596,80 @@ export default function Auth() {
 
   // ── Formulário principal ──────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="flex min-h-screen flex-col bg-background md:flex-row">
+      <BrandingPanel />
 
-      {/* ── Botão Voltar ─────────────────────────────────────────────────── */}
-      <button
-        onClick={() => navigate(-1)}
-        aria-label="Voltar"
-        className="fixed top-4 left-4 z-50 flex items-center gap-1.5 rounded-lg
-                   px-3 py-2 text-sm font-medium text-muted-foreground
-                   hover:bg-accent hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Voltar
-      </button>
+      <div className="relative flex w-full min-h-screen flex-1 flex-col md:w-[55%]">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label="Voltar"
+          className="fixed left-4 top-4 z-50 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-[hsl(var(--ink-3))] transition-colors hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--ink-1))]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar
+        </button>
 
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center gap-2 mb-4 cursor-pointer"
-            onClick={() => navigate("/")}
-          >
-            <Leaf className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-bold font-display">
-              nutr<span className="text-primary">IA</span>prova
-            </h1>
+        <motion.div
+          className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-8 py-12"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="mb-8 text-center md:hidden">
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="inline-flex items-center justify-center gap-2"
+            >
+              <Leaf className="h-7 w-7 text-primary" />
+              <span className="font-display text-2xl font-extrabold text-brand">NutrIAprova</span>
+            </button>
+            <p className="mt-2 font-sans text-sm text-[hsl(var(--ink-2))]">Saúde com inteligência e validação real</p>
+            {refCode && (
+              <p className="mt-1 text-xs font-medium text-primary">
+                🔗 Indicado por um Personal Trainer
+              </p>
+            )}
           </div>
-          <p className="text-muted-foreground">Saúde com inteligência e validação real</p>
-          {refCode && (
-            <p className="text-xs text-primary mt-1 font-medium">
-              🔗 Indicado por um Personal Trainer
-            </p>
-          )}
-        </div>
 
-        <Card className="glass-card">
-          <CardHeader>
-            <CardTitle className="font-display">
-              {isLogin ? "Entrar" : "Criar Conta"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+          <div className="md:mb-2 md:mt-0">
+            {refCode && (
+              <p className="mb-2 hidden text-center text-xs font-medium text-primary md:block">
+                🔗 Indicado por um Personal Trainer
+              </p>
+            )}
             {emailServiceNotice && (
-              <Alert>
+              <Alert className="mb-6">
                 <AlertTitle>E-mail em manutenção</AlertTitle>
                 <AlertDescription>
-                  O envio de links e códigos por e-mail pode falhar ocasionalmente (fila, limites ou spam).
-                  Prefira <strong>Entrar com Google</strong> abaixo — esse fluxo não depende de e-mail.
+                  O envio de links e códigos por e-mail pode falhar ocasionalmente (fila, limites ou spam). Prefira{" "}
+                  <strong>Entrar com Google</strong> abaixo — esse fluxo não depende de e-mail.
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* Google — fluxo principal recomendado */}
-            <div className="space-y-1">
-              <p className="text-xs text-center text-muted-foreground">Recomendado</p>
-              <Button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={googleLoading || loading}
-                className="w-full gap-3 h-12 bg-card border-2 border-primary text-foreground hover:bg-accent"
-              >
-                <GoogleIcon />
-                {googleLoading ? "Conectando..." : "Entrar com Google"}
-              </Button>
-            </div>
+            <h1 className="font-display text-[1.75rem] font-bold leading-tight text-[hsl(var(--ink-1))]">
+              {isLogin ? "Entrar" : "Criar conta"}
+            </h1>
+            <p className="mt-1 font-sans text-[0.9rem] text-[hsl(var(--ink-3))]">
+              {isLogin
+                ? "Acesse sua conta para continuar o acompanhamento."
+                : "Crie seu perfil e comece em poucos minutos."}
+            </p>
 
-            {/* Método */}
-            <div className="flex items-center gap-2">
+            <div className="mb-4 mt-6 flex items-center gap-2">
               {(["email", "phone"] as AuthMethod[]).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setAuthMethod(m)}
-                  className={`flex-1 py-2.5 rounded-lg border-2 transition-all text-sm font-medium ${
+                  className={cn(
+                    "flex-1 rounded-[var(--radius-sm)] border py-2.5 text-sm font-medium transition-all font-sans",
                     authMethod === m
-                      ? "border-primary bg-accent"
-                      : "border-border text-muted-foreground"
-                  }`}
+                      ? "border-primary bg-[hsl(var(--accent))] text-[hsl(var(--ink-1))]"
+                      : "border-[hsl(var(--surface-3))] bg-background text-[hsl(var(--ink-3))] hover:border-[hsl(var(--surface-2))]",
+                  )}
                 >
                   {m === "email" ? "E-mail" : "Telefone"}
                 </button>
@@ -567,142 +677,215 @@ export default function Auth() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Campos de cadastro */}
-              {!isLogin && (
-                <>
-                  <div className="space-y-2">
-                    <Label>Nome Completo</Label>
-                    <Input
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Como deseja ser chamado?"
-                      required
-                    />
-                  </div>
+              <AnimatePresence mode="wait" custom={isLogin}>
+                <motion.div
+                  key={isLogin ? "login" : "signup"}
+                  custom={isLogin}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                  variants={{
+                    initial: (isL: boolean) => ({
+                      opacity: 0,
+                      x: isL ? 28 : -28,
+                    }),
+                    animate: { opacity: 1, x: 0 },
+                    exit: (isL: boolean) => ({
+                      opacity: 0,
+                      x: isL ? -28 : 28,
+                    }),
+                  }}
+                  className="space-y-4"
+                >
+                  {!isLogin && (
+                    <>
+                      <div>
+                        <Label className={authLabelClass} htmlFor="auth-fullname">
+                          Nome completo
+                        </Label>
+                        <Input
+                          id="auth-fullname"
+                          className={authInputClassName}
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Como deseja ser chamado?"
+                          required
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <Label>Perfil</Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { v: "client",           l: "Cliente",   i: User },
-                        { v: "nutritionist",     l: "Nutri",     i: Stethoscope },
-                        { v: "personal_trainer", l: "Personal",  i: Dumbbell },
-                      ].map((p) => (
-                        <button
-                          key={p.v}
-                          type="button"
-                          onClick={() => setRole(p.v as typeof role)}
-                          className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all ${
-                            role === p.v
-                              ? "border-primary bg-accent"
-                              : "border-border opacity-60"
-                          }`}
-                        >
-                          <p.i className="h-4 w-4 mb-1" />
-                          <span className="text-[10px] font-bold">{p.l}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                      <div>
+                        <span className={authLabelClass}>Perfil</span>
+                        <div className="mt-1 flex w-full gap-0.5 rounded-full bg-[hsl(var(--surface-2))] p-1">
+                          {[
+                            { v: "client" as const, l: "Cliente", i: User },
+                            { v: "nutritionist" as const, l: "Nutri", i: Stethoscope },
+                            { v: "personal_trainer" as const, l: "Personal", i: Dumbbell },
+                          ].map((p) => (
+                            <button
+                              key={p.v}
+                              type="button"
+                              onClick={() => setRole(p.v)}
+                              className={cn(
+                                "flex flex-1 items-center justify-center gap-1 rounded-full py-2 font-sans text-[13px] font-medium transition-shadow",
+                                role === p.v
+                                  ? "bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))] shadow-sm dark:bg-[hsl(var(--surface-1))] dark:shadow-sm"
+                                  : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+                              )}
+                            >
+                              <p.i className="h-3.5 w-3.5 shrink-0" />
+                              {p.l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-                  {role === "nutritionist" && (
-                    <div className="space-y-2">
-                      <Label>Registro CRN</Label>
+                      {role === "nutritionist" && (
+                        <div>
+                          <Label className={authLabelClass} htmlFor="auth-crn">
+                            Registro CRN
+                          </Label>
+                          <Input
+                            id="auth-crn"
+                            className={authInputClassName}
+                            value={crnNumber}
+                            onChange={(e) => setCrnNumber(maskCRN(e.target.value))}
+                            placeholder="CRN-3 12345"
+                            required
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div>
+                    <Label className={authLabelClass} htmlFor={authMethod === "email" ? "auth-email" : "auth-phone"}>
+                      {authMethod === "email" ? "Seu e-mail" : "Seu telefone"}
+                    </Label>
+                    {authMethod === "email" ? (
                       <Input
-                        value={crnNumber}
-                        onChange={(e) => setCrnNumber(maskCRN(e.target.value))}
-                        placeholder="CRN-3 12345"
+                        id="auth-email"
+                        className={authInputClassName}
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="seu@email.com"
                         required
+                      />
+                    ) : (
+                      <Input
+                        id="auth-phone"
+                        className={authInputClassName}
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(maskPhone(e.target.value))}
+                        placeholder="(11) 99999-9999"
+                        required
+                      />
+                    )}
+                  </div>
+
+                  {isLogin && authMethod === "email" && (
+                    <div>
+                      <Label className={authLabelClass} htmlFor="auth-pass-login">
+                        Senha
+                      </Label>
+                      <p className="mb-1.5 font-sans text-xs text-[hsl(var(--ink-3))]">
+                        Deixe em branco para receber um código de verificação.
+                      </p>
+                      <Input
+                        id="auth-pass-login"
+                        className={authInputClassName}
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Vazio → recebe código OTP"
+                        minLength={0}
+                      />
+                      <div className="mt-1.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => navigate("/recuperar-senha")}
+                          className="font-sans text-sm text-primary hover:underline"
+                        >
+                          Esqueci minha senha
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isLogin && authMethod === "email" && (
+                    <div>
+                      <Label className={authLabelClass} htmlFor="auth-pass-signup">
+                        Senha
+                      </Label>
+                      <Input
+                        id="auth-pass-signup"
+                        className={authInputClassName}
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                        minLength={6}
                       />
                     </div>
                   )}
-                </>
-              )}
 
-              {/* E-mail ou telefone */}
-              <div className="space-y-2">
-                <Label>{authMethod === "email" ? "Seu E-mail" : "Seu Telefone"}</Label>
-                {authMethod === "email" ? (
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu@email.com"
-                    required
-                  />
-                ) : (
-                  <Input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(maskPhone(e.target.value))}
-                    placeholder="(11) 99999-9999"
-                    required
-                  />
-                )}
-              </div>
-
-              {/* Senha apenas no login por e-mail */}
-              {isLogin && authMethod === "email" && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Senha (deixe em branco para receber código)</Label>
-                    <button
-                      type="button"
-                      onClick={() => navigate("/recuperar-senha")}
-                      className="text-xs text-primary hover:underline font-medium"
-                    >
-                      Esqueci minha senha
-                    </button>
-                  </div>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Vazio → recebe código OTP"
-                    minLength={0}
-                  />
-                </div>
-              )}
-
-              {!isLogin && authMethod === "email" && (
-                <div className="space-y-2">
-                  <Label>Senha</Label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    minLength={6}
-                  />
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                disabled={loading || googleLoading}
-                className="w-full emerald-gradient text-primary-foreground h-12 text-base font-bold shadow-lg"
-              >
-                {loading
-                  ? "Processando..."
-                  : isLogin
-                  ? "Entrar"
-                  : "Criar Minha Conta"}
-              </Button>
+                  <Button
+                    type="submit"
+                    aria-busy={loading}
+                    className={cn(
+                      "btn-primary h-11 w-full gap-2 text-base font-semibold",
+                      (loading || googleLoading) && "pointer-events-none cursor-wait opacity-80",
+                    )}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        {isLogin ? "Entrando..." : "Criando..."}
+                      </>
+                    ) : isLogin ? (
+                      "Entrar"
+                    ) : (
+                      "Criar minha conta"
+                    )}
+                  </Button>
+                </motion.div>
+              </AnimatePresence>
             </form>
 
-            <div className="text-center">
+            <GoogleSeparator />
+
+            <div className="mt-0">
+              <Button
+                type="button"
+                onClick={handleGoogleSignIn}
+                aria-busy={googleLoading}
+                className={cn(
+                  "h-11 w-full gap-3 rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] font-sans text-sm font-medium text-[hsl(var(--ink-1))] shadow-sm transition-all",
+                  "hover:border-[hsl(var(--surface-2))] hover:bg-[hsl(var(--surface-1))]",
+                  (googleLoading || loading) && "pointer-events-none cursor-wait opacity-80",
+                )}
+              >
+                {googleLoading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <GoogleIcon />}
+                {googleLoading ? "Conectando..." : "Entrar com Google"}
+              </Button>
+            </div>
+
+            <div className="mt-8 text-center">
               <button
+                type="button"
                 onClick={() => setIsLogin(!isLogin)}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                className="font-sans text-sm text-[hsl(var(--ink-3))] transition-colors hover:text-primary"
               >
                 {isLogin
                   ? "Não tem conta? Cadastre-se grátis"
                   : "Já tem conta? Fazer login"}
               </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
       </div>
     </div>
   );

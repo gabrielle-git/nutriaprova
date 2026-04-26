@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
-  { label: "Início", icon: Home, path: "/" },
+  { label: "Início", icon: Home, path: "/inicio" },
   { label: "Dieta", icon: Utensils, path: "/?tab=dieta" },
   { label: "Comunidade", icon: Users, path: "/comunidade" },
   { label: "Perfil", icon: User, path: "/configuracoes" },
@@ -19,6 +19,7 @@ export default function MobileBottomNav() {
 
   const isActive = (path: string) => {
     const base = path.split("?")[0];
+    if (base === "/inicio") return location.pathname === "/inicio";
     if (base === "/") return location.pathname === "/" && !location.search.includes("tab=");
     return location.pathname === base;
   };

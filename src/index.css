@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
+/* nutrIAprova — design system: tipografia + paleta + utilitários premium (clínico) */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -24,6 +25,7 @@
     --radius: 0.875rem;
     --radius-sm: 0.5rem;
     --radius-xl: 1.5rem;
+    color-scheme: light;
 
     --background: var(--surface-1);
     --foreground: var(--ink-1);
@@ -31,7 +33,6 @@
     --card-foreground: var(--ink-1);
     --popover: var(--surface-0);
     --popover-foreground: var(--ink-1);
-
     --secondary: var(--surface-2);
     --secondary-foreground: var(--ink-1);
     --muted: var(--surface-2);
@@ -41,11 +42,9 @@
     --destructive: var(--danger);
     --primary-foreground: 0 0% 100%;
     --destructive-foreground: 0 0% 100%;
-
     --border: var(--surface-3);
     --input: var(--surface-3);
     --ring: var(--primary-glow);
-
     --sidebar-background: var(--surface-1);
     --sidebar-foreground: var(--ink-1);
     --sidebar-primary: var(--primary);
@@ -54,7 +53,6 @@
     --sidebar-accent-foreground: var(--ink-1);
     --sidebar-border: var(--surface-3);
     --sidebar-ring: var(--primary-glow);
-
     --emerald-glow: var(--primary-glow);
     --clinical-surface: var(--surface-0);
     --clinical-border: var(--surface-3);
@@ -73,6 +71,7 @@
     --ink-1: 150 15% 94%;
     --ink-2: 150 10% 72%;
     --ink-3: 150 8% 48%;
+    color-scheme: dark;
 
     --background: var(--surface-0);
     --foreground: var(--ink-1);
@@ -80,16 +79,13 @@
     --card-foreground: var(--ink-1);
     --popover: var(--surface-1);
     --popover-foreground: var(--ink-1);
-    --primary: 158 72% 36%;
-    --primary-light: 158 65% 45%;
-    --primary-glow: 158 80% 58%;
-    --primary-foreground: 0 0% 100%;
     --secondary: var(--surface-2);
     --secondary-foreground: var(--ink-1);
     --muted: var(--surface-2);
     --muted-foreground: var(--ink-2);
     --accent: 160 30% 18%;
     --accent-foreground: 158 60% 76%;
+    --primary-foreground: 0 0% 100%;
     --destructive: var(--danger);
     --destructive-foreground: 0 0% 100%;
     --border: var(--surface-3);
@@ -110,27 +106,48 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "DM Sans", sans-serif;
+    font-family: "DM Sans", system-ui, sans-serif;
     font-weight: 400;
-    letter-spacing: -0.005em;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.006em;
+    text-rendering: optimizeLegibility;
   }
+
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    font-feature-settings: "ss02";
   }
+
+  h1 {
+    font-weight: 800;
+  }
+
   code,
   pre,
   kbd,
   samp {
-    font-family: "JetBrains Mono", monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-feature-settings: "ss01", "cv01";
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+    color: hsl(var(--ink-1));
+  }
+
+  .dark ::selection {
+    background: hsl(var(--primary-glow) / 0.25);
+    color: hsl(var(--ink-1));
   }
 }
 
@@ -154,8 +171,15 @@
   .card-clinical:hover {
     box-shadow:
       0 2px 8px hsl(var(--ink-1) / 0.06),
-      0 12px 32px hsl(var(--primary) / 0.10);
+      0 12px 32px hsl(var(--primary) / 0.1);
     transform: translateY(-1px);
+  }
+
+  /* Plano em destaque (página de planos) — brilho verde */
+  .shadow-card-hover {
+    box-shadow:
+      0 2px 8px hsl(var(--ink-1) / 0.05),
+      0 10px 40px hsl(var(--primary) / 0.2);
   }
 
   .bg-hero {
@@ -198,7 +222,7 @@
     color: white;
     border-radius: var(--radius-sm);
     padding: 0.625rem 1.5rem;
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     font-weight: 600;
     font-size: 0.9375rem;
     letter-spacing: -0.01em;
@@ -231,17 +255,21 @@
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   .stagger > *:nth-child(1) { animation-delay: 0.05s; }
-  .stagger > *:nth-child(2) { animation-delay: 0.10s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.1s; }
   .stagger > *:nth-child(3) { animation-delay: 0.15s; }
-  .stagger > *:nth-child(4) { animation-delay: 0.20s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.2s; }
   .stagger > *:nth-child(5) { animation-delay: 0.25s; }
-  .stagger > *:nth-child(6) { animation-delay: 0.30s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.3s; }
   .stagger > *:nth-child(n+7) { animation-delay: 0.35s; }
 
   .pulse-brand {
     animation: pulseBrand 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  .noise {
+    position: relative;
+    overflow: hidden;
+  }
   .noise::before {
     content: "";
     position: absolute;
@@ -251,7 +279,6 @@
     border-radius: inherit;
   }
 
-  /* Retrocompatibilidade visual com classes existentes no app */
   .glass-card {
     @apply glass card-clinical;
   }
@@ -285,11 +312,11 @@
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   .stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
-  .stagger-children > *:nth-child(2) { animation-delay: 0.10s; }
+  .stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
   .stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
-  .stagger-children > *:nth-child(4) { animation-delay: 0.20s; }
+  .stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
   .stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
-  .stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+  .stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
   .stagger-children > *:nth-child(n+7) { animation-delay: 0.35s; }
 }
 

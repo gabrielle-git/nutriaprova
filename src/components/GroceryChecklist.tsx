@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ShoppingCart, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { DietPlan } from "@/services/n8nService";
+import { cn } from "@/lib/utils";
 
 interface Props {
   dietPlan: DietPlan;
@@ -23,47 +22,71 @@ export default function GroceryChecklist({ dietPlan }: Props) {
     setChecked(next);
   };
 
-  const progress = Math.round((checked.size / allIngredients.length) * 100);
+  const progress = allIngredients.length === 0 ? 0 : Math.round((checked.size / allIngredients.length) * 100);
 
   return (
-    <Card className="glass-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-display flex items-center justify-between">
+    <div className="card-clinical overflow-hidden">
+      <div className="border-b border-[hsl(var(--surface-3))] p-4">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-primary" />
-            Lista de Compras Semanal
+            <span className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">
+              Lista de compras semanal
+            </span>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="border-[hsl(var(--surface-3))] text-xs text-[hsl(var(--ink-2))]">
             {checked.size}/{allIngredients.length} itens
           </Badge>
-        </CardTitle>
-        {/* Progress bar */}
-        <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mt-2">
+        </div>
+        <div className="mt-3 h-[6px] w-full overflow-hidden rounded-full bg-[hsl(var(--surface-3))]">
           <div
-            className="h-full emerald-gradient rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
+            className="h-full rounded-full transition-all duration-300"
+            style={{
+              width: `${progress}%`,
+              background: "linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary-glow)))",
+            }}
           />
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {allIngredients.map((item) => (
-            <label
-              key={item}
-              className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                checked.has(item) ? "bg-accent/50 line-through text-muted-foreground" : "hover:bg-muted/50"
-              }`}
-            >
-              <Checkbox
-                checked={checked.has(item)}
-                onCheckedChange={() => toggle(item)}
-              />
-              <span className="text-sm">{item}</span>
-              {checked.has(item) && <Check className="h-3 w-3 text-primary ml-auto" />}
-            </label>
-          ))}
+      </div>
+      <div className="p-3 sm:p-4">
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2">
+          {allIngredients.map((item) => {
+            const isOn = checked.has(item);
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => toggle(item)}
+                className={cn(
+                  "flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent p-2.5 text-left transition-colors",
+                  "hover:bg-[hsl(var(--surface-1))]",
+                  isOn && "opacity-60",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border",
+                    isOn
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]",
+                  )}
+                  aria-hidden
+                >
+                  {isOn ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                </span>
+                <span
+                  className={cn(
+                    "text-sm text-[hsl(var(--ink-1))]",
+                    isOn && "text-[hsl(var(--ink-3))] line-through decoration-[hsl(var(--ink-3))]",
+                  )}
+                >
+                  {item}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

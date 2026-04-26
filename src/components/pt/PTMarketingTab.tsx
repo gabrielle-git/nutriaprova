@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Copy, Link } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,28 +29,31 @@ export default function PTMarketingTab({ referralLink }: { referralLink: string 
   };
 
   return (
-    <Card className="glass-card">
-      <CardHeader>
-        <CardTitle className="font-display text-lg flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-primary" /> Material de Apoio — Scripts para WhatsApp
-        </CardTitle>
+    <Card className="card-clinical border-[hsl(var(--surface-3))] shadow-sm">
+      <CardHeader className="border-b border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-[hsl(var(--primary))]" /> Material de apoio — WhatsApp
+          </CardTitle>
+          <Badge className="badge-gold w-fit text-[11px]">R$ 10 / conversão</Badge>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 p-5 md:p-6">
         {/* Referral Link */}
-        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <p className="text-sm font-medium mb-2 flex items-center gap-2">
-            <Link className="h-4 w-4 text-primary" /> Seu Link de Afiliado:
+        <div className="rounded-xl border border-dashed border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.04)] p-4">
+          <p className="mb-2 flex items-center gap-2 text-sm font-medium text-[hsl(var(--ink-1))]">
+            <Link className="h-4 w-4 text-[hsl(var(--primary))]" /> Seu link de afiliado
           </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 text-sm bg-background/50 px-3 py-2 rounded-md border border-border truncate">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <code className="flex-1 truncate rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] px-3 py-2.5 font-mono text-sm">
               {referralLink}
             </code>
-            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => copyText(referralLink)}>
-              <Copy className="h-3 w-3" /> Copiar
+            <Button type="button" size="sm" variant="secondary" className="gap-1.5 sm:shrink-0" onClick={() => copyText(referralLink)}>
+              <Copy className="h-4 w-4" /> Copiar link
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Você ganha <span className="text-primary font-bold">R$ 10,00</span> por cada aluno que comprar usando seu link!
+          <p className="mt-2 text-xs text-[hsl(var(--ink-3))]">
+            Comissão em destaque: <span className="badge-gold inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold">R$ 10,00</span> por aluno que comprar com o link.
           </p>
         </div>
 

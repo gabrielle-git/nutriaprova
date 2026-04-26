@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
@@ -12,13 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf, ArrowLeft, User, Sun, Moon, Monitor, Bell,
-  Shield, Save, CreditCard, Lock, Wallet, ExternalLink,
+  Shield, Save, CreditCard, Lock, Wallet, ExternalLink, Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ClinicLogoUpload from "@/components/ClinicLogoUpload";
 import PlansModal from "@/components/PlansModal";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 // ── Label do plano atual ─────────────────────────────────────────
 const TIER_LABELS: Record<string, string> = {
@@ -47,6 +48,8 @@ export default function Configuracoes() {
   // contam como "preenchido no banco".
   const birthDateLocked = !!((profile as any)?.birth_date);
   const [saving, setSaving]       = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [plansOpen, setPlansOpen] = useState(
     // Abre direto na aba de planos se vier de ?tab=plano
     searchParams.get("tab") === "plano",
@@ -134,6 +137,51 @@ export default function Configuracoes() {
     setSaving(false);
   };
 
+  const getInitialsForAvatar = (name: string, email: string) => {
+    const n = name.trim();
+    if (n) {
+      const p = n.split(/\s+/).filter(Boolean);
+      if (p.length >= 2) return `${p[0][0] ?? ""}${p[p.length - 1][0] ?? ""}`.toUpperCase();
+      return n.slice(0, 2).toUpperCase();
+    }
+    return (email || "?").slice(0, 2).toUpperCase();
+  };
+
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Envie um arquivo de imagem (JPG, PNG, WebP).");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Imagem muito grande. Máximo 2MB.");
+      return;
+    }
+    setAvatarUploading(true);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (uploadError) {
+      toast.error("Erro no upload: " + uploadError.message);
+      setAvatarUploading(false);
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+    const { error: updateError } = await (supabase as any)
+      .from("profiles")
+      .update({ avatar_url: publicUrl })
+      .eq("user_id", user.id);
+    if (updateError) {
+      toast.error("Erro ao salvar a foto: " + updateError.message);
+    } else {
+      await refreshProfile();
+      toast.success("Foto de perfil atualizada!");
+    }
+    setAvatarUploading(false);
+  };
+
   const themeOptions: { value: "light" | "dark" | "system"; label: string; icon: typeof Sun }[] = [
     { value: "light",  label: "Claro",   icon: Sun     },
     { value: "dark",   label: "Escuro",  icon: Moon    },
@@ -147,7 +195,7 @@ export default function Configuracoes() {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/inicio")}>
           <Leaf className="h-5 w-5 text-primary" />
           <span className="font-display font-bold">
             Nutr<span className="text-primary">IA</span>prova
@@ -181,6 +229,41 @@ export default function Configuracoes() {
                 <CardDescription>Gerencie suas informações pessoais</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarFile}
+                  />
+                  <Avatar className="h-20 w-20 border border-border/60 shadow-sm">
+                    {profile?.avatar_url ? (
+                      <AvatarImage src={profile.avatar_url} alt="Foto de perfil" className="object-cover" />
+                    ) : null}
+                    <AvatarFallback className="bg-primary/10 text-lg font-semibold text-primary">
+                      {getInitialsForAvatar(fullName || profile?.full_name || "", user?.email || "")}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-1.5 min-w-0">
+                    <p className="text-sm font-medium">Foto de perfil</p>
+                    <p className="text-xs text-muted-foreground">JPG, PNG ou WebP, até 2MB. Aparece no app e na comunidade.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 mt-1"
+                      disabled={avatarUploading}
+                      onClick={() => avatarInputRef.current?.click()}
+                    >
+                      <Camera className="h-4 w-4" />
+                      {avatarUploading ? "Enviando..." : "Alterar foto"}
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
                 {/* Nome (editável) */}
                 <div className="space-y-2">
                   <Label htmlFor="full-name">Nome Completo</Label>

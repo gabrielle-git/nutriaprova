@@ -17,11 +17,11 @@ function dashboardPathFor(
   if (role === "nutritionist") {
     const crnOk = isCRNValid((profile?.crn_number ?? "").trim());
     const nameOk = !!profile?.full_name?.trim();
-    return crnOk && nameOk ? "/nutri-dashboard" : "/onboarding";
+    return crnOk && nameOk ? "/inicio" : "/onboarding";
   }
-  if (role === "personal_trainer") return "/personal-dashboard";
-  if (role === "admin") return "/admin";
-  if (role === "client") return "/dashboard";
+  if (role === "personal_trainer") return "/inicio";
+  if (role === "admin") return "/inicio";
+  if (role === "client") return "/inicio";
   return null;
 }
 

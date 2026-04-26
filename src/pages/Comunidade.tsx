@@ -1,24 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Heart, Bookmark, ImagePlus, Send, ShoppingBag, Leaf, Dumbbell, Crown, Sparkles } from "lucide-react";
+import { Heart, Bookmark, ImagePlus, Send, ShoppingBag, Leaf, Dumbbell, Crown, Sparkles, User } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-type Role = "nutritionist" | "personal_trainer" | "admin";
+type Role = "nutritionist" | "personal_trainer" | "admin" | "client";
 
 interface Post {
   id: string;
   authorName: string;
   authorRole: Role;
   authorInitials: string;
+  authorAvatarUrl?: string;
   text: string;
   imageUrl?: string;
   createdAt: string;
@@ -86,6 +87,7 @@ type CommunityPostRow = {
   author_name: string;
   author_role: Role;
   author_initials: string;
+  author_avatar_url?: string | null;
   text: string;
   image_url: string | null;
   created_at: string;
@@ -102,6 +104,12 @@ function RoleBadge({ role }: { role: Role }) {
     return (
       <Badge className="gap-1 bg-orange-500/10 text-orange-600 border border-orange-500/30 hover:bg-orange-500/15 dark:text-orange-400">
         <Dumbbell className="h-3 w-3" /> Personal
+      </Badge>
+    );
+  if (role === "client")
+    return (
+      <Badge className="gap-1 bg-sky-500/10 text-sky-700 border border-sky-500/30 hover:bg-sky-500/15 dark:text-sky-300">
+        <User className="h-3 w-3" /> Cliente
       </Badge>
     );
   return (
@@ -144,19 +152,50 @@ export default function Comunidade() {
   const [newText, setNewText] = useState("");
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [hasPlanoConcluido, setHasPlanoConcluido] = useState(false);
 
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
   const role = (profile?.role as string) || "";
   const canPost = useMemo(
-    () => isSupreme || role === "nutritionist" || role === "admin" || role === "personal_trainer",
-    [isSupreme, role]
+    () =>
+      isSupreme ||
+      role === "nutritionist" ||
+      role === "admin" ||
+      role === "personal_trainer" ||
+      (role === "client" && hasPlanoConcluido),
+    [isSupreme, role, hasPlanoConcluido]
   );
 
-  const currentRole: Role = isSupreme || role === "admin"
+  const currentRole: Role = isSupreme
+    ? "nutritionist"
+    : role === "admin"
     ? "admin"
     : role === "personal_trainer"
     ? "personal_trainer"
+    : role === "client" && hasPlanoConcluido
+    ? "client"
     : "nutritionist";
+
+  useEffect(() => {
+    if (!user || role !== "client") {
+      setHasPlanoConcluido(false);
+      return;
+    }
+    void (async () => {
+      const { data, error } = await (supabase as any)
+        .from("diet_requests")
+        .select("id")
+        .eq("client_id", user.id)
+        .eq("status", "completed")
+        .limit(1);
+      if (error) {
+        console.warn("[Comunidade] diet_requests completed check:", error.message);
+        setHasPlanoConcluido(false);
+        return;
+      }
+      setHasPlanoConcluido(!!(data && (data as { id: string }[]).length > 0));
+    })();
+  }, [user, role]);
 
   const fetchPosts = async () => {
     if (!user) {
@@ -169,7 +208,7 @@ export default function Comunidade() {
 
     const { data, error } = await (supabase as any)
       .from("community_posts")
-      .select("id, author_id, author_name, author_role, author_initials, text, image_url, created_at")
+      .select("id, author_id, author_name, author_role, author_initials, author_avatar_url, text, image_url, created_at")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -207,6 +246,7 @@ export default function Comunidade() {
         authorName: post.author_name,
         authorRole: post.author_role,
         authorInitials: post.author_initials,
+        authorAvatarUrl: post.author_avatar_url ?? undefined,
         text: post.text,
         imageUrl: post.image_url ?? undefined,
         createdAt: formatRelativeDate(post.created_at),
@@ -228,7 +268,7 @@ export default function Comunidade() {
     }
 
     if (!user || !canPost) {
-      toast.error("Apenas profissionais podem publicar na Comunidade.");
+      toast.error("Você não pode publicar ainda. Profissionais publicam à vontade; clientes precisam ter um plano concluído.");
       return;
     }
 
@@ -241,6 +281,7 @@ export default function Comunidade() {
       author_name: authorName,
       author_role: currentRole,
       author_initials: getInitials(authorName || "EU"),
+      author_avatar_url: profile?.avatar_url ?? null,
       text,
     });
 
@@ -318,7 +359,7 @@ export default function Comunidade() {
           <h1 className="font-display text-2xl font-bold">Comunidade nutrIAprova</h1>
         </div>
         <p className="text-sm text-muted-foreground -mt-3">
-          Receitas, dicas de treino e conteúdo dos melhores profissionais da plataforma.
+          Receitas, dicas e experiências. Nutricionistas ganham 1 moeda a cada 10 curtidas nos próprios posts.
         </p>
 
         {/* Composer — only nutri / personal / admin */}
@@ -327,6 +368,9 @@ export default function Comunidade() {
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start gap-3">
                 <Avatar className="h-10 w-10">
+                  {profile?.avatar_url ? (
+                    <AvatarImage src={profile.avatar_url} alt="" className="object-cover" />
+                  ) : null}
                   <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                     {getInitials(profile?.full_name || user?.email || "EU")}
                   </AvatarFallback>
@@ -353,7 +397,9 @@ export default function Comunidade() {
         {!canPost && user && (
           <Card className="border-dashed border-primary/30 bg-primary/5">
             <CardContent className="p-4 text-sm text-muted-foreground">
-              Apenas profissionais (Nutricionistas e Personal Trainers) podem publicar. Você pode curtir e salvar receitas. 💚
+              {role === "client" && !hasPlanoConcluido
+                ? "Quando tiver um plano de dieta concluído (receita liberada), você poderá publicar aqui. Enquanto isso, curta e salve as receitas da comunidade."
+                : "Apenas contas habilitadas podem publicar. Você ainda pode curtir e salvar. 💚"}
             </CardContent>
           </Card>
         )}
@@ -379,6 +425,9 @@ export default function Comunidade() {
                 {/* Header */}
                 <div className="flex items-center gap-3 p-4">
                   <Avatar className="h-11 w-11 ring-2 ring-primary/20">
+                    {post.authorAvatarUrl ? (
+                      <AvatarImage src={post.authorAvatarUrl} alt="" className="object-cover" />
+                    ) : null}
                     <AvatarFallback className="bg-primary/10 text-primary font-semibold">
                       {post.authorInitials}
                     </AvatarFallback>

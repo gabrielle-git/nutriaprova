@@ -16,6 +16,8 @@ export interface Profile {
   updated_at: string;
   affiliate_code: string | null;
   referred_by: string | null;
+  /** URL pública (storage) da foto de perfil */
+  avatar_url?: string | null;
 }
 
 interface AuthContextType {

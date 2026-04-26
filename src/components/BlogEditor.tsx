@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ImagePlus, Loader2, Trash2, Plus, Edit3, Star } from "lucide-react";
 import { toast } from "sonner";
+import { blogAuthorBylineFromProfile } from "@/lib/utils";
 
 interface BlogEditorProps {
   open: boolean;
@@ -37,6 +38,8 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
   const { user, profile } = useAuth();
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
   const isAdmin = isSupreme || profile?.role === "admin";
+  const isContentAuthor =
+    isAdmin || profile?.role === "nutritionist" || profile?.role === "personal_trainer";
   const [title, setTitle] = useState("");
   const [excerpt, setExcerpt] = useState("");
   const [content, setContent] = useState("");
@@ -60,9 +63,10 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
       setPublished(editingPost.published ?? true);
     } else if (open) {
       setTitle(""); setExcerpt(""); setContent(""); setCategory("Nutrição");
-      setReadTime("5 min"); setCoverUrl(""); setFeatured(false); setPublished(true);
+      setReadTime("5 min"); setCoverUrl(""); setFeatured(false);
+      setPublished(isSupreme || profile?.role === "admin");
     }
-  }, [editingPost, open]);
+  }, [editingPost, open, isSupreme, profile?.role]);
 
   const uploadImage = async (file: File, kind: "cover" | "inline") => {
     if (!user) return null;
@@ -105,7 +109,7 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !isContentAuthor) return;
     if (!title.trim() || !content.trim()) {
       toast.error("Título e conteúdo são obrigatórios.");
       return;
@@ -113,9 +117,24 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
     setSaving(true);
     try {
       const slug = editingPost?.slug || `${slugify(title)}-${Date.now().toString(36)}`;
-      // Triage: Admin publishes directly, others go to pending review
+      // Triage: admin/supremo publica direto; nutri e personal enviam p/ aprovação
       const status = isAdmin ? "published" : "pending_review";
-      const payload: any = {
+      const { author_display_name, author_role_label } = blogAuthorBylineFromProfile(profile);
+      const payload: {
+        title: string;
+        slug: string;
+        excerpt: string;
+        content: string;
+        category: string;
+        read_time: string;
+        cover_image_url: string | null;
+        featured: boolean;
+        published: boolean;
+        author_id: string;
+        status: string;
+        author_display_name: string;
+        author_role_label: string;
+      } = {
         title: title.trim(),
         slug,
         excerpt: excerpt.trim() || title.slice(0, 140),
@@ -124,9 +143,11 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
         read_time: readTime,
         cover_image_url: coverUrl || null,
         featured: isAdmin ? featured : false,
-        published,
+        published: isAdmin ? published : false,
         author_id: user.id,
         status,
+        author_display_name: author_display_name || user.email || "Autor",
+        author_role_label: author_role_label || "Autor",
       };
       if (editingPost) {
         const { error } = await supabase.from("blog_posts").update(payload).eq("id", editingPost.id);
@@ -236,10 +257,12 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
                 </Label>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Switch checked={published} onCheckedChange={setPublished} />
-              <Label className="cursor-pointer">Publicado</Label>
-            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <Switch checked={published} onCheckedChange={setPublished} />
+                <Label className="cursor-pointer">Publicado</Label>
+              </div>
+            )}
             {!isAdmin && (
               <Badge variant="outline" className="text-xs border-primary/40 text-primary">
                 ⏳ Será revisado pela administração antes de ir ao ar
@@ -252,7 +275,11 @@ export default function BlogEditor({ open, onOpenChange, onSaved, editingPost }:
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving || uploading} className="emerald-gradient text-primary-foreground">
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              {editingPost ? "Salvar Alterações" : "Publicar Artigo"}
+              {editingPost
+                ? "Salvar alterações"
+                : isAdmin
+                  ? "Publicar artigo"
+                  : "Enviar para revisão"}
             </Button>
           </div>
         </div>

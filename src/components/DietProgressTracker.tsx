@@ -80,11 +80,11 @@ export default function DietProgressTracker() {
   if (visibleRequests.length === 0) return null;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <div className="mx-auto w-full max-w-5xl space-y-4 p-0">
       {visibleRequests.map((req) => {
         const currentStep = statusToStep(req.status);
         return (
-          <Card key={req.id} className="glass-card border-primary/30">
+          <Card key={req.id} className="card-clinical border-primary/25">
             <CardHeader className="pb-3">
               <CardTitle className="font-display text-base flex items-center gap-2">
                 <Clock className="h-5 w-5 text-primary" />
