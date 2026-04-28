@@ -11,6 +11,19 @@ type ProfileRow = {
   crn_number: string | null;
 };
 
+function hasCompleteName(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const normalized = name.trim().replace(/\s+/g, " ");
+  return normalized.length >= 3 && normalized.includes(" ");
+}
+
+function normalizeRole(role: string | null | undefined): "client" | "nutritionist" | "personal_trainer" | "admin" {
+  if (role === "nutritionist") return "nutritionist";
+  if (role === "personal_trainer") return "personal_trainer";
+  if (role === "admin") return "admin";
+  return "client";
+}
+
 /**
  * Decide a rota pós-login de forma literal e previsível.
  *
@@ -66,17 +79,34 @@ export default function AuthCallback() {
         }
         const user = session.user;
 
-        // 3) Se a tela /auth gravou intenção de cadastro (Google OAuth perde
-        //    options.data), aplica UMA vez no profile + metadata. Isso só
-        //    "carimba" o role correto; a decisão de rota usa o profile real.
+        // 3) Lê o perfil e reconcilia fallback de nome/role.
         const pending = getPendingSignup();
-        if (pending?.role) {
+        const { data: existingProfile } = await supabase
+          .from("profiles")
+          .select("role, full_name, crn_number")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        const metaFullName = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? null) as string | null;
+        const safeMetaRole = user.user_metadata?.role as string | undefined;
+        const fallbackRole = normalizeRole(pending?.role ?? existingProfile?.role ?? safeMetaRole ?? "client");
+        const fallbackName = pending?.fullName?.trim() || existingProfile?.full_name?.trim() || metaFullName?.trim() || null;
+
+        const needsProfileUpsert =
+          !existingProfile ||
+          !existingProfile.full_name ||
+          existingProfile.full_name.trim().length === 0 ||
+          !!pending?.role;
+
+        if (needsProfileUpsert) {
           const payload = {
             user_id: user.id,
-            role: pending.role,
-            full_name: pending.fullName ?? user.user_metadata?.full_name ?? null,
+            role: fallbackRole,
+            full_name: fallbackName,
             crn_number:
-              pending.role === "nutritionist" ? (pending.crnNumber ?? null) : null,
+              fallbackRole === "nutritionist"
+                ? (pending?.crnNumber ?? existingProfile?.crn_number ?? null)
+                : null,
           };
           const { error: upErr } = await supabase
             .from("profiles")
@@ -84,18 +114,26 @@ export default function AuthCallback() {
             .upsert(payload as any, { onConflict: "user_id" });
           if (upErr) console.warn("[AuthCallback] upsert profile:", upErr.message);
 
-          await supabase.auth.updateUser({ data: { role: pending.role } });
+          if (pending?.role) {
+            await supabase.auth.updateUser({ data: { role: pending.role } });
+          }
         }
         clearPendingSignup();
 
-        // 4) Lê o perfil e roteia.
+        // 4) Lê o perfil final e valida nome completo obrigatório.
         const { data: profile } = await supabase
           .from("profiles")
           .select("role, full_name, crn_number")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        navigate(decideRoute(profile as ProfileRow | null, user), { replace: true });
+        const nextRoute = decideRoute(profile as ProfileRow | null, user);
+        if (!hasCompleteName(profile?.full_name)) {
+          navigate(`/confirmar-nome-completo?next=${encodeURIComponent(nextRoute)}`, { replace: true });
+          return;
+        }
+
+        navigate(nextRoute, { replace: true });
       } catch (err) {
         console.error("[AuthCallback] erro:", err);
         clearPendingSignup();

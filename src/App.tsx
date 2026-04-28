@@ -12,6 +12,7 @@ import PageTransition from "@/components/PageTransition";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
+import ConfirmarNomeCompleto from "./pages/ConfirmarNomeCompleto";
 import OnboardingNutri from "./pages/OnboardingNutri";
 import NutricionistasLanding from "./pages/NutricionistasLanding";
 import RecuperarSenha from "./pages/RecuperarSenha";
@@ -47,6 +48,11 @@ function AnimatedRoutes() {
       <Route path="/"                    element={<PageTransition><Index /></PageTransition>} />
       <Route path="/auth"                element={<PageTransition><Auth /></PageTransition>} />
       <Route path="/auth/callback"       element={<PageTransition><AuthCallback /></PageTransition>} />
+      <Route path="/confirmar-nome-completo" element={
+        <RouteGuard>
+          <PageTransition><ConfirmarNomeCompleto /></PageTransition>
+        </RouteGuard>
+      } />
       <Route path="/onboarding" element={
         <RouteGuard>
           <PageTransition><OnboardingNutri /></PageTransition>

@@ -518,19 +518,34 @@ export default function Auth() {
   const handleSignUp = async () => {
     if (googleLoading) return;
 
+    const normalizedFullName = fullName.trim();
+    if (!normalizedFullName) {
+      toast.error("Informe seu nome completo.");
+      return;
+    }
+
     if (role === "nutritionist" && !isCRNValid(crnNumber)) {
       toast.error("Por favor, informe um CRN válido.");
       return;
     }
     setLoading(true);
     try {
+      // Mantém a intenção para o callback reconciliar no profile caso o trigger do
+      // banco não preencha o nome completo corretamente.
+      setPendingSignup({
+        role,
+        fullName: normalizedFullName,
+        crnNumber: role === "nutritionist" ? (crnNumber.trim() || null) : null,
+        refCode: refCode || null,
+      });
+
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
-            full_name: fullName.trim(),
+            full_name: normalizedFullName,
             role: role,
             crn_number: role === "nutritionist" ? crnNumber : null,
             referred_by: refCode || null,
@@ -553,12 +568,12 @@ export default function Auth() {
         if (signInError) throw signInError;
       }
 
-      clearPendingSignup();
       toast.success("Conta criada com sucesso!");
       setSubmitPulse("success");
       navigate("/auth/callback", { replace: true });
       return;
     } catch (err: unknown) {
+      clearPendingSignup();
       const msg = err instanceof Error ? err.message : "Erro no cadastro";
       const low = msg.toLowerCase();
       if (
