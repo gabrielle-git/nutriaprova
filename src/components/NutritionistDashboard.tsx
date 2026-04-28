@@ -210,7 +210,7 @@ type RequestPanelCommon = {
   profile: { credits?: number; full_name?: string } | null;
   onOpenReview: (r: DietRequest) => void;
   onOpenPdf: (r: DietRequest) => void;
-  onAccept: (r: DietRequest) => void;
+  onAccept: (r: DietRequest) => Promise<void>;
   onGoRetention: () => void;
   draft: DietPlan | null;
   clientData: StoredClientData | null;
@@ -335,7 +335,9 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
               className={cn(
                 "btn-primary btn-breathe border-beam relative flex h-11 items-center justify-center gap-2 overflow-hidden px-4 text-sm font-semibold text-primary-foreground",
               )}
-              onClick={() => onAccept(request)}
+              onClick={() => {
+                void onAccept(request);
+              }}
             >
               <motion.span
                 className="inline-flex"
@@ -463,66 +465,89 @@ export default function NutritionistDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- evita re-subscribe em todo render
   }, [profile?.id]);
 
+  const hasValidDraft = (request: DietRequest | null | undefined) => {
+    const maybeDraft = request?.ai_draft as unknown;
+    return !!(
+      maybeDraft &&
+      typeof maybeDraft === "object" &&
+      !Array.isArray(maybeDraft) &&
+      "meals" in (maybeDraft as Record<string, unknown>)
+    );
+  };
+
   const handleAcceptJob = async (request: DietRequest) => {
-    if (!user || !profile) return;
+    try {
+      if (!user || !profile) {
+        toast.error("Sessão inválida. Recarregue a página.");
+        return;
+      }
 
-    // Custo de moeda depende do plano. Clínica (e Admin Supremo) = 0.
-    const tier = (profile?.plan_tier ?? "basic") as PlanTier;
-    const isSupreme = user.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
-    const coinCost = isSupreme ? 0 : jobCoinCost(tier);
+      // Custo de moeda depende do plano. Clínica (e Admin Supremo) = 0.
+      const tier = (profile?.plan_tier ?? "basic") as PlanTier;
+      const isSupreme = user.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
+      const coinCost = isSupreme ? 0 : jobCoinCost(tier);
 
-    if (coinCost > 0 && profile.credits < coinCost) {
-      toast.error("Créditos insuficientes! Você precisa de pelo menos 1 moeda.");
-      return;
+      if (coinCost > 0 && profile.credits < coinCost) {
+        toast.error("Créditos insuficientes! Você precisa de pelo menos 1 moeda.");
+        return;
+      }
+
+      // Optimistic lock: only update if still pending (prevents race condition)
+      const { data: updated, error } = await supabase
+        .from("diet_requests")
+        .update({ status: "in_review", nutritionist_id: user.id })
+        .eq("id", request.id)
+        .eq("status", "pending") // Lock: only if still pending
+        .select()
+        .single();
+
+      if (error || !updated) {
+        toast.error("Este job já foi aceito por outro nutricionista.");
+        fetchRequests(); // Refresh to remove it from feed
+        return;
+      }
+
+      // Deduct credit after successful lock — plano Clínica / Admin Supremo não gastam moedas.
+      if (coinCost > 0) {
+        await supabase
+          .from("profiles")
+          .update({ credits: profile.credits - coinCost })
+          .eq("user_id", user.id);
+
+        await supabase.from("transactions").insert({
+          user_id: user.id, amount: -coinCost, type: "job_acceptance",
+          description: `Aceitou job #${request.id.slice(0, 8)}`,
+        });
+
+        await refreshProfile();
+        void epicRumble.start({
+          x: [0, -3, 3, -2, 2, 0],
+          transition: { duration: 0.4 },
+        });
+        toast.success("Job aceito! Boa validação.");
+      } else {
+        await supabase.from("transactions").insert({
+          user_id: user.id, amount: 0, type: "job_acceptance",
+          description: `Aceitou job #${request.id.slice(0, 8)} (Clínica — validação ilimitada)`,
+        });
+        void epicRumble.start({
+          x: [0, -3, 3, -2, 2, 0],
+          transition: { duration: 0.4 },
+        });
+        toast.success("Job aceito! Validação ilimitada do plano Clínica.");
+      }
+
+      setSelectedRequest(updated);
+      setViewMode("feed");
+      if (hasValidDraft(updated)) {
+        setSheetOpen(true);
+      } else {
+        setSheetOpen(false);
+        toast.error("Plano ainda está sendo gerado. Tente abrir novamente em instantes.");
+      }
+    } catch {
+      toast.error("Falha ao gerar plano com IA. Tente novamente.");
     }
-
-    // Optimistic lock: only update if still pending (prevents race condition)
-    const { data: updated, error } = await supabase
-      .from("diet_requests")
-      .update({ status: "in_review", nutritionist_id: user.id })
-      .eq("id", request.id)
-      .eq("status", "pending") // Lock: only if still pending
-      .select()
-      .single();
-
-    if (error || !updated) {
-      toast.error("Este job já foi aceito por outro nutricionista.");
-      fetchRequests(); // Refresh to remove it from feed
-      return;
-    }
-
-    // Deduct credit after successful lock — plano Clínica / Admin Supremo não gastam moedas.
-    if (coinCost > 0) {
-      await supabase
-        .from("profiles")
-        .update({ credits: profile.credits - coinCost })
-        .eq("user_id", user.id);
-
-      await supabase.from("transactions").insert({
-        user_id: user.id, amount: -coinCost, type: "job_acceptance",
-        description: `Aceitou job #${request.id.slice(0, 8)}`,
-      });
-
-      await refreshProfile();
-      void epicRumble.start({
-        x: [0, -3, 3, -2, 2, 0],
-        transition: { duration: 0.4 },
-      });
-      toast.success("Job aceito! Boa validação.");
-    } else {
-      await supabase.from("transactions").insert({
-        user_id: user.id, amount: 0, type: "job_acceptance",
-        description: `Aceitou job #${request.id.slice(0, 8)} (Clínica — validação ilimitada)`,
-      });
-      void epicRumble.start({
-        x: [0, -3, 3, -2, 2, 0],
-        transition: { duration: 0.4 },
-      });
-      toast.success("Job aceito! Validação ilimitada do plano Clínica.");
-    }
-    setSelectedRequest(updated);
-    setViewMode("feed");
-    setSheetOpen(true);
   };
 
   const handleApprove = async () => {
@@ -560,6 +585,10 @@ export default function NutritionistDashboard() {
   };
 
   const openReview = (request: DietRequest) => {
+    if (!hasValidDraft(request)) {
+      toast.error("Plano ainda indisponível. Aguarde a geração da IA.");
+      return;
+    }
     setSelectedRequest(request);
     setExpertComment("");
     setViewMode("feed");
@@ -567,6 +596,10 @@ export default function NutritionistDashboard() {
   };
 
   const openPdfView = (request: DietRequest) => {
+    if (!hasValidDraft(request)) {
+      toast.error("Sem plano disponível para visualização em PDF.");
+      return;
+    }
     setSelectedRequest(request);
     setViewMode("pdf");
     setSheetOpen(true);
@@ -624,7 +657,7 @@ export default function NutritionistDashboard() {
       )}
 
       {/* Cabeçalho clínico + toolbar */}
-      <motion.div variants={itemVariants} className="mb-6 flex flex-col gap-4 border-b border-[1px] border-[hsl(var(--surface-3))] pb-6 lg:flex-row lg:items-center lg:justify-between">
+      <motion.div variants={itemVariants} className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex flex-col gap-0.5">
             <p className="text-sm font-medium text-[hsl(var(--ink-2))]">
@@ -744,10 +777,10 @@ export default function NutritionistDashboard() {
           </div>
         </motion.div>
 
-        <TabsContent value="jobs" className="space-y-8 focus-visible:outline-none">
+        <TabsContent value="jobs" className="space-y-6 focus-visible:outline-none">
           {exclusiveLeads.length > 0 && (
-            <div className="card-clinical overflow-hidden border-[hsl(var(--surface-3))] p-0 shadow-sm">
-              <div className="flex items-center justify-between border-b border-[1px] border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-3.5">
+            <div className="overflow-hidden rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]">
+              <div className="flex items-center justify-between border-b border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-3">
                 <h2 className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Novos Leads</h2>
                 <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-2 text-xs font-bold text-white">
                   <AnimatedNumber value={exclusiveLeads.length} decimals={0} />
@@ -770,7 +803,7 @@ export default function NutritionistDashboard() {
                         transition: { duration: 0.15 },
                       }}
                       whileTap={{ scale: 0.98 }}
-                      className="flex items-center justify-between gap-3 px-4 py-3.5"
+                      className="flex items-center justify-between gap-3 px-4 py-3"
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div
@@ -790,7 +823,7 @@ export default function NutritionistDashboard() {
                         <Button
                           type="button"
                           size="sm"
-                          className="h-8 shrink-0 rounded-full border border-[hsl(var(--primary))] bg-transparent px-3.5 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
+                          className="h-8 shrink-0 rounded-full border border-[hsl(var(--primary))]/35 bg-transparent px-3.5 text-xs font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
                           onClick={() => handleAcceptJob(req)}
                         >
                           Ativar
@@ -810,7 +843,7 @@ export default function NutritionistDashboard() {
           {loading ? (
             <div className="py-16 text-center text-[hsl(var(--ink-3))]">Carregando...</div>
           ) : requests.length === 0 ? (
-            <div className="card-clinical py-12 text-center">
+            <div className="rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] py-12 text-center">
               <AlertCircle className="mx-auto mb-3 h-10 w-10 text-[hsl(var(--ink-3))]" />
               <p className="font-display font-medium text-[hsl(var(--ink-1))]">Nenhuma solicitação no momento</p>
               <p className="text-sm text-[hsl(var(--ink-3))]">Novos pedidos aparecerão aqui em tempo real</p>
@@ -821,7 +854,7 @@ export default function NutritionistDashboard() {
                 <Tabs value={clinicTab} onValueChange={(v) => setClinicTab(v as "list" | "detail")}>
                   <div
                     role="tablist"
-                    className="mb-3 grid w-full grid-cols-2 gap-0.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1"
+                    className="mb-4 grid w-full grid-cols-2 gap-0.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1"
                   >
                     <button
                       type="button"
@@ -863,7 +896,7 @@ export default function NutritionistDashboard() {
                       <span className="relative z-10">Detalhe</span>
                     </button>
                   </div>
-                  <TabsContent value="list" className="mt-0 max-h-[min(70vh,520px)] space-y-2 overflow-y-auto pr-0.5">
+                  <TabsContent value="list" className="mt-0 max-h-[min(70vh,520px)] space-y-2.5 overflow-y-auto pr-0.5">
                     {requests.map((req, index) => {
                       const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
@@ -888,7 +921,7 @@ export default function NutritionistDashboard() {
                             setClinicTab("detail");
                           }}
                           className={cn(
-                            "card-clinical w-full p-3 text-left transition-shadow hover:shadow-md",
+                            "w-full rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3 text-left transition-colors",
                             isSel && "border-l-4 border-l-[hsl(var(--primary))] bg-[hsl(var(--primary))]/4",
                           )}
                         >
@@ -949,12 +982,12 @@ export default function NutritionistDashboard() {
                 </Tabs>
               </div>
 
-              <div className="hidden min-h-[min(80vh,560px)] md:flex md:overflow-hidden md:rounded-xl md:border md:border-[1px] md:border-[hsl(var(--surface-3))] md:shadow-sm">
-                <aside className="flex w-[240px] shrink-0 flex-col border-r border-[1px] border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))]">
-                  <div className="border-b border-[1px] border-[hsl(var(--surface-3))] px-3 py-3">
+              <div className="hidden min-h-[min(80vh,560px)] md:flex md:gap-4 md:overflow-hidden">
+                <aside className="flex w-[250px] shrink-0 flex-col">
+                  <div className="px-2 py-2">
                     <p className="font-display text-xs font-semibold tracking-wide text-[hsl(var(--ink-2))]">Pacientes</p>
                   </div>
-                  <div className="flex-1 space-y-1.5 overflow-y-auto p-2.5">
+                  <div className="flex-1 space-y-2 overflow-y-auto px-1.5 py-1">
                     {requests.map((req, index) => {
                       const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
@@ -976,9 +1009,8 @@ export default function NutritionistDashboard() {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => setSelectedRequest(req)}
                           className={cn(
-                            "card-clinical w-full p-2.5 text-left transition-all hover:shadow-sm",
+                            "w-full rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-2.5 text-left transition-colors",
                             isSel && "border-l-4 border-l-[hsl(var(--primary))] bg-[hsl(var(--primary))]/4 shadow-none",
-                            !isSel && "border border-transparent",
                           )}
                         >
                           <div className="flex items-start gap-2.5">
@@ -1006,7 +1038,7 @@ export default function NutritionistDashboard() {
                     })}
                   </div>
                 </aside>
-                <main className="min-w-0 flex-1 overflow-y-auto bg-[hsl(var(--surface-0))] p-4 lg:p-6">
+                <main className="min-w-0 flex-1 overflow-y-auto rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-4 lg:p-6">
                   <AnimatePresence mode="wait">
                     {selectedRequest ? (
                       <motion.div
@@ -1051,7 +1083,7 @@ export default function NutritionistDashboard() {
             variants={itemVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 border-t border-[1px] border-[hsl(var(--surface-3))] pt-8"
+            className="space-y-6 border-t border-[hsl(var(--surface-3))] pt-6"
             aria-label="Métricas do negócio"
           >
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -1178,7 +1210,10 @@ export default function NutritionistDashboard() {
 
         {/* Retention Tab */}
         <TabsContent value="retention">
-          <RetentionTab nutritionistName={profile?.full_name || "Nutricionista"} />
+          <RetentionTab
+            nutritionistName={profile?.full_name || "Nutricionista"}
+            nutritionistUserId={user?.id}
+          />
         </TabsContent>
 
         {/* Affiliate Tab */}

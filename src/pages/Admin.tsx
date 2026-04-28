@@ -129,7 +129,8 @@ export default function Admin() {
       <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
           <Leaf className="h-5 w-5 text-primary" />
-          <span className="font-display font-bold">Nutr<span className="text-primary">IA</span>prova</span>
+          <span className="font-display font-bold">Nutr<span className="text-brand-animated">IAprova</span></span>
+          <span className="badge-live text-xs min-h-[1em]" aria-hidden />
           <Badge variant="outline" className="ml-2 text-xs border-destructive text-destructive">ADMIN</Badge>
         </div>
         <div className="flex items-center gap-4">

@@ -149,7 +149,10 @@ export default function CadastroPix() {
         </Button>
         <div className="flex items-center gap-2 font-display font-bold text-lg">
           <Leaf className="h-5 w-5 text-primary" />
-          Nutr<span className="text-primary">IA</span>prova
+          <span>
+            Nutr<span className="text-brand-animated">IAprova</span>
+          </span>
+          <span className="badge-live text-xs min-h-[1em]" aria-hidden />
         </div>
       </header>
 

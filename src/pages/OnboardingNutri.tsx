@@ -188,8 +188,9 @@ export default function OnboardingNutri() {
       <div className="mb-8 flex items-center gap-2">
         <Leaf className="h-8 w-8 text-primary" />
         <span className="font-display font-bold text-2xl">
-          nutr<span className="text-primary">IA</span>prova
+          Nutr<span className="text-brand-animated">IAprova</span>
         </span>
+        <span className="badge-live text-xs min-h-[1em]" aria-hidden />
       </div>
 
       <Card className="w-full max-w-md glass-card">

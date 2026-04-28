@@ -65,7 +65,10 @@ export default function NutriBemVindo() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 font-display font-bold text-lg">
           <Leaf className="h-5 w-5 text-primary" />
-          nutr<span className="text-primary">IA</span>prova
+          <span>
+            Nutr<span className="text-brand-animated">IAprova</span>
+          </span>
+          <span className="badge-live text-xs min-h-[1em]" aria-hidden />
         </div>
         <Badge variant="outline" className="text-xs border-primary/30 text-primary">
           Bem-vindo(a), Nutricionista!

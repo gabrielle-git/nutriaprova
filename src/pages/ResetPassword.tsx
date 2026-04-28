@@ -63,7 +63,8 @@ export default function ResetPassword() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4 cursor-pointer" onClick={() => navigate("/")}>
             <Leaf className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-bold font-display text-gradient-emerald">nutrIAprova</h1>
+            <h1 className="text-3xl font-bold font-display text-gradient-emerald">NutrIAprova</h1>
+            <span className="badge-live text-xs min-h-[1em]" aria-hidden />
           </div>
         </div>
 

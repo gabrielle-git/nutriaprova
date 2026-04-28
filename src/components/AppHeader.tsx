@@ -237,11 +237,10 @@ export default function AppHeader() {
             transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
             <Leaf className="h-7 w-7 shrink-0 text-primary" strokeWidth={1.85} aria-hidden />
-            <span className="flex min-w-0 items-center gap-2" style={{ lineHeight: "28px" }}>
+            <span className="flex min-w-0 items-center gap-1.5" style={{ lineHeight: "28px" }}>
               <span className="font-display text-lg font-black tracking-tighter text-[hsl(var(--ink-1))] sm:text-xl">
-                Nutr
+                Nutr<span className="text-brand-animated">IAprova</span>
               </span>
-              <span className="font-display text-lg font-black tracking-tighter sm:text-xl text-brand-animated">IAprova</span>
               <span className="badge-live text-xs min-h-[1em]" aria-hidden />
             </span>
           </motion.div>

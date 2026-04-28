@@ -119,8 +119,9 @@ export default function PersonalTrainerLanding() {
         >
           <Leaf className="h-5 w-5 text-primary" />
           <span className="font-display font-bold text-lg">
-            nutr<span className="text-primary">IA</span>prova
+            Nutr<span className="text-brand-animated">IAprova</span>
           </span>
+          <span className="badge-live text-xs min-h-[1em]" aria-hidden />
         </div>
 
         {/* CTA no header — mesmo goSignup */}

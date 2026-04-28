@@ -103,7 +103,8 @@ export default function NutricionistasLanding() {
       <header className="flex items-center justify-between px-6 py-4 border-b border-border/50">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
           <Leaf className="h-6 w-6 text-primary" />
-          <span className="font-display font-bold text-xl">Nutr<span className="text-primary">IA</span>prova</span>
+          <span className="font-display font-bold text-xl">Nutr<span className="text-brand-animated">IAprova</span></span>
+          <span className="badge-live text-xs min-h-[1em]" aria-hidden />
         </div>
         {/* Botão de login no header permanece como login simples */}
         <Button variant="outline" onClick={() => navigate("/auth")}>Entrar</Button>
