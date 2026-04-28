@@ -188,8 +188,9 @@ export default function Blog() {
           <div className="flex cursor-pointer items-center gap-2" onClick={() => navigate("/")}>
             <Leaf className="h-6 w-6 text-primary" />
             <span className="font-display text-xl font-bold">
-              Nutr<span className="text-primary">IA</span>prova
+              Nutr<span className="text-brand-animated">IAprova</span>
             </span>
+            <span className="badge-live text-xs min-h-[1em]" aria-hidden />
           </div>
           <div className="flex items-center gap-3">
             {canManage && (

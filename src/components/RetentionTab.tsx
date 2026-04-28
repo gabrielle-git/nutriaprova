@@ -1,27 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MessageSquare, Users, AlertTriangle, CheckCircle2, Clock, Phone } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 
 interface ClientRetention {
   id: string;
+  clientId: string;
   name: string;
   dietDate: string;
   daysSince: number;
   status: "active" | "warning" | "risk";
   lastCheckin: string | null;
 }
-
-const MOCK_CLIENTS: ClientRetention[] = [
-  { id: "1", name: "Maria Silva", dietDate: "2026-04-10", daysSince: 4, status: "active", lastCheckin: "Ontem" },
-  { id: "2", name: "João Santos", dietDate: "2026-04-07", daysSince: 7, status: "warning", lastCheckin: "3 dias atrás" },
-  { id: "3", name: "Ana Oliveira", dietDate: "2026-04-02", daysSince: 12, status: "risk", lastCheckin: null },
-  { id: "4", name: "Carlos Pereira", dietDate: "2026-04-12", daysSince: 2, status: "active", lastCheckin: "Hoje" },
-  { id: "5", name: "Fernanda Costa", dietDate: "2026-04-05", daysSince: 9, status: "risk", lastCheckin: "5 dias atrás" },
-];
 
 const STATUS_CONFIG = {
   active: { label: "Ativo", color: "bg-primary/20 text-primary border-primary/30", icon: CheckCircle2 },
@@ -31,19 +26,132 @@ const STATUS_CONFIG = {
 
 interface RetentionTabProps {
   nutritionistName: string;
+  nutritionistUserId?: string;
 }
 
-export default function RetentionTab({ nutritionistName }: RetentionTabProps) {
+type DietRequestRow = Database["public"]["Tables"]["diet_requests"]["Row"];
+
+function daysSinceFromDate(isoDate: string): number {
+  const start = new Date(isoDate);
+  if (Number.isNaN(start.getTime())) return 0;
+  const diffMs = Date.now() - start.getTime();
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+function retentionStatus(daysSince: number): ClientRetention["status"] {
+  if (daysSince <= 6) return "active";
+  if (daysSince <= 10) return "warning";
+  return "risk";
+}
+
+function humanizeLastCheckin(isoDate: string | null): string | null {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return null;
+  const diffDays = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return "Hoje";
+  if (diffDays === 1) return "Ontem";
+  if (diffDays < 7) return `${diffDays} dias atrás`;
+  return d.toLocaleDateString("pt-BR");
+}
+
+function clientNameFromRequest(
+  req: DietRequestRow,
+  profileName: string | null | undefined,
+): string {
+  if (profileName && profileName.trim()) return profileName.trim();
+  const cd = req.client_data;
+  if (cd && typeof cd === "object" && !Array.isArray(cd)) {
+    const asRecord = cd as Record<string, unknown>;
+    const byFullName = asRecord.full_name;
+    const byName = asRecord.name;
+    if (typeof byFullName === "string" && byFullName.trim()) return byFullName.trim();
+    if (typeof byName === "string" && byName.trim()) return byName.trim();
+  }
+  return `Paciente #${req.client_id.slice(0, 8)}`;
+}
+
+export default function RetentionTab({ nutritionistName, nutritionistUserId }: RetentionTabProps) {
   const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientRetention | null>(null);
+  const [clients, setClients] = useState<ClientRetention[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const openWhatsappPreview = (client: ClientRetention) => {
     setSelectedClient(client);
     setWhatsappModalOpen(true);
   };
 
-  const activeCount = MOCK_CLIENTS.filter(c => c.status === "active").length;
-  const riskCount = MOCK_CLIENTS.filter(c => c.status === "risk").length;
+  useEffect(() => {
+    const fetchRetentionClients = async () => {
+      if (!nutritionistUserId) {
+        setClients([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const { data: requestsData, error: reqError } = await supabase
+        .from("diet_requests")
+        .select("id, client_id, client_data, created_at, status, updated_at, nutritionist_id")
+        .eq("nutritionist_id", nutritionistUserId)
+        .in("status", ["in_review", "completed"])
+        .order("created_at", { ascending: false })
+        .limit(120);
+
+      if (reqError || !requestsData) {
+        setClients([]);
+        setLoading(false);
+        return;
+      }
+
+      const latestByClient = new Map<string, DietRequestRow>();
+      for (const req of requestsData as DietRequestRow[]) {
+        if (!latestByClient.has(req.client_id)) latestByClient.set(req.client_id, req);
+      }
+
+      const clientIds = Array.from(latestByClient.keys());
+      if (clientIds.length === 0) {
+        setClients([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", clientIds);
+
+      const namesByUserId = new Map<string, string>();
+      for (const p of profilesData ?? []) {
+        namesByUserId.set(p.user_id, p.full_name ?? "");
+      }
+
+      const normalized = Array.from(latestByClient.values())
+        .map((req) => {
+          const daysSince = daysSinceFromDate(req.created_at);
+          const status = retentionStatus(daysSince);
+          return {
+            id: req.id,
+            clientId: req.client_id,
+            name: clientNameFromRequest(req, namesByUserId.get(req.client_id)),
+            dietDate: req.created_at,
+            daysSince,
+            status,
+            lastCheckin: humanizeLastCheckin((req as { updated_at?: string | null }).updated_at ?? null),
+          } satisfies ClientRetention;
+        })
+        .sort((a, b) => new Date(b.dietDate).getTime() - new Date(a.dietDate).getTime());
+
+      setClients(normalized);
+      setLoading(false);
+    };
+
+    void fetchRetentionClients();
+  }, [nutritionistUserId]);
+
+  const activeCount = useMemo(() => clients.filter((c) => c.status === "active").length, [clients]);
+  const riskCount = useMemo(() => clients.filter((c) => c.status === "risk").length, [clients]);
 
   return (
     <div className="space-y-6">
@@ -52,7 +160,7 @@ export default function RetentionTab({ nutritionistName }: RetentionTabProps) {
         <Card className="glass-card">
           <CardContent className="pt-4 pb-4 text-center">
             <Users className="h-5 w-5 text-primary mx-auto mb-1" />
-            <p className="text-2xl font-display font-bold text-primary">{MOCK_CLIENTS.length}</p>
+            <p className="text-2xl font-display font-bold text-primary">{clients.length}</p>
             <p className="text-xs text-muted-foreground">Total Clientes</p>
           </CardContent>
         </Card>
@@ -93,7 +201,19 @@ export default function RetentionTab({ nutritionistName }: RetentionTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {MOCK_CLIENTS.map((client) => {
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
+                      Carregando acompanhamento...
+                    </TableCell>
+                  </TableRow>
+                ) : clients.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
+                      Nenhum paciente em acompanhamento ainda.
+                    </TableCell>
+                  </TableRow>
+                ) : clients.map((client) => {
                   const status = STATUS_CONFIG[client.status];
                   const StatusIcon = status.icon;
                   return (

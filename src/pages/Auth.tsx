@@ -691,8 +691,9 @@ export default function Auth() {
               >
                 <Leaf className="h-8 w-8 text-primary" />
                 <span className="font-display text-2xl font-extrabold text-[hsl(var(--ink-1))]">
-                  nutr<span className="text-primary">IA</span>prova
+                  Nutr<span className="text-brand-animated">IAprova</span>
                 </span>
+                <span className="badge-live text-xs min-h-[1em]" aria-hidden />
               </button>
             </div>
             <div className="rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-6 shadow-sm">
@@ -802,6 +803,7 @@ export default function Auth() {
             >
               <Leaf className="h-7 w-7 text-primary" />
               <span className="font-display text-2xl font-extrabold text-brand">NutrIAprova</span>
+              <span className="badge-live text-xs min-h-[1em]" aria-hidden />
             </button>
             <p className="mt-2 font-sans text-sm text-[hsl(var(--ink-2))]">Saúde com inteligência e validação real</p>
             {refCode && (

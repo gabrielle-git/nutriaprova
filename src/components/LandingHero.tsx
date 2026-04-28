@@ -319,7 +319,7 @@ export default function LandingHero() {
           >
             <Leaf className="h-6 w-6 text-primary" />
             <span className="font-display text-lg font-bold tracking-[-0.02em] md:text-xl">
-              nutr<span className="text-primary">IA</span>prova
+              Nutr<span className="text-brand-animated">IAprova</span>
             </span>
           </div>
 
