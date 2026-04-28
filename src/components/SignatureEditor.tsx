@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Pen, Save, Eye } from "lucide-react";
+import { CheckCircle2, Pen, Save, Eye, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface SignatureData {
@@ -15,6 +15,17 @@ interface SignatureData {
   crnNumber: string;
   specialty: string;
   signatureStyle: "classic" | "modern" | "minimal";
+}
+
+/** Exibe CRN uma única vez, mesmo se o perfil vier com prefixo duplicado (ex.: CRN-CRN-…). */
+function formatCrnForDisplay(raw: string | null | undefined): string {
+  let t = (raw ?? "").trim();
+  if (!t) return "";
+  while (/^CRN[-\s]*/i.test(t)) {
+    t = t.replace(/^CRN[-\s]*/i, "").trim();
+  }
+  if (!t) return "";
+  return `CRN-${t}`;
 }
 
 const SPECIALTIES = [
@@ -49,16 +60,23 @@ export default function SignatureEditor() {
     }
   }, [profile]);
 
+  const lockedCrn = (profile?.crn_number || "").trim();
+  const crnPreview = formatCrnForDisplay(lockedCrn || signature.crnNumber);
+
   const handleSave = async () => {
-    if (!signature.fullName.trim() || !signature.crnNumber.trim()) {
-      toast.error("Nome completo e CRN são obrigatórios na assinatura.");
+    if (!signature.fullName.trim()) {
+      toast.error("Nome completo é obrigatório na assinatura.");
+      return;
+    }
+    if (!lockedCrn) {
+      toast.error("CRN não encontrado no perfil. Complete o cadastro antes de salvar a assinatura.");
       return;
     }
     setSaving(true);
     try {
       const { error } = await supabase
         .from("profiles")
-        .update({ full_name: signature.fullName, crn_number: signature.crnNumber })
+        .update({ full_name: signature.fullName })
         .eq("user_id", user!.id);
       if (error) throw error;
       await refreshProfile();
@@ -79,7 +97,7 @@ export default function SignatureEditor() {
         <div className="rounded-xl border-2 border-primary/30 bg-gradient-to-br from-accent/40 to-card p-6 text-center">
           <div className="w-16 h-0.5 bg-primary mx-auto mb-4" />
           <p className="font-serif text-lg font-bold text-foreground italic">{signature.fullName}</p>
-          <p className="text-sm text-primary font-semibold mt-1">Nutricionista — {signature.crnNumber}</p>
+          <p className="text-sm text-primary font-semibold mt-1">Nutricionista — {crnPreview}</p>
           {signature.specialty && <p className="text-xs text-muted-foreground mt-0.5">{signature.specialty}</p>}
           <p className="text-xs text-muted-foreground mt-2">{date}</p>
           <div className="w-16 h-0.5 bg-primary mx-auto mt-4" />
@@ -93,7 +111,7 @@ export default function SignatureEditor() {
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-sm text-foreground">{signature.fullName}</p>
-              <p className="text-xs text-muted-foreground">{signature.crnNumber} • {signature.specialty}</p>
+              <p className="text-xs text-muted-foreground">{crnPreview} • {signature.specialty}</p>
             </div>
             <CheckCircle2 className="h-5 w-5 text-primary" />
           </div>
@@ -109,7 +127,7 @@ export default function SignatureEditor() {
         <CheckCircle2 className="h-8 w-8 text-primary mx-auto mb-3" />
         <p className="font-display font-bold text-lg text-foreground">{signature.fullName}</p>
         <p className="text-sm text-primary font-semibold mt-1">
-          Nutricionista — {signature.crnNumber}
+          Nutricionista — {crnPreview}
         </p>
         {signature.specialty && (
           <p className="text-xs text-muted-foreground mt-1">Especialidade: {signature.specialty}</p>
@@ -154,13 +172,22 @@ export default function SignatureEditor() {
               />
             </div>
             <div>
-              <Label htmlFor="sigCrn">Registro CRN *</Label>
+              <Label htmlFor="sigCrn" className="flex items-center gap-2 text-[hsl(var(--ink-1))]">
+                <Lock className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--ink-3))]" aria-hidden />
+                Registro CRN
+                <span className="sr-only">Campo bloqueado — dado validado não pode ser alterado aqui.</span>
+              </Label>
               <Input
                 id="sigCrn"
-                value={signature.crnNumber}
-                onChange={(e) => setSignature({ ...signature, crnNumber: e.target.value })}
-                placeholder="CRN-0 00000"
+                readOnly
+                disabled
+                value={lockedCrn ? formatCrnForDisplay(lockedCrn) : "—"}
+                className="mt-1.5 cursor-not-allowed border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] text-[hsl(var(--ink-2))] opacity-90"
+                aria-describedby="sigCrn-hint"
               />
+              <p id="sigCrn-hint" className="mt-1.5 text-xs text-muted-foreground">
+                Registro validado no cadastro — não pode ser alterado neste editor.
+              </p>
             </div>
             <div>
               <Label>Especialidade</Label>

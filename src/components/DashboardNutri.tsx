@@ -17,7 +17,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import PlanGate from "@/components/PlanGate";
@@ -32,6 +31,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { cn } from "@/lib/utils";
 import {
   TrendingUp, CheckCircle2, Clock, Coins,
   Wallet, ArrowUpRight, BarChart3,
@@ -61,8 +61,8 @@ const MONTHLY_VALIDATIONS = [
 function BRLTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-border bg-card p-3 text-sm shadow-md">
-      <p className="font-semibold mb-1">{label}</p>
+    <div className="rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3 text-sm shadow-md">
+      <p className="mb-1 font-display font-semibold text-[hsl(var(--ink-1))]">{label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }}>
           {p.name}:{" "}
@@ -104,16 +104,32 @@ export default function DashboardNutri() {
 
   const totalEarned = completedCount * 15; // R$ 15 por validação
 
+  const planBadge =
+    tier === "premium" || tier === "clinic" ? (
+      <span className="badge-gold rounded-full px-2.5 py-0.5 text-xs font-semibold">Pro</span>
+    ) : tier === "freemium" ? (
+      <span className="rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--ink-2))]">Free</span>
+    ) : (
+      <span className="rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] px-2.5 py-0.5 text-xs font-semibold text-[hsl(var(--ink-2))]">Básico</span>
+    );
+
   return (
     <div className="space-y-6">
-      {/* ── Cartões de resumo ─────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="border-b border-[1px] border-[hsl(var(--surface-3))] pb-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-[hsl(var(--ink-1))]">Painel Clínico</h1>
+          {planBadge}
+        </div>
+        <p className="mt-1 text-sm font-sans text-[hsl(var(--ink-3))]">Métricas e evolução do seu consultório</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         {[
           {
             label: "Validações",
             value: completedCount,
             icon: CheckCircle2,
-            color: "text-primary",
+            color: "text-[hsl(var(--primary))]",
             suffix: "",
           },
           {
@@ -127,14 +143,14 @@ export default function DashboardNutri() {
             label: "Moedas",
             value: credits,
             icon: Coins,
-            color: "text-yellow-500",
+            color: "text-coin-gold",
             suffix: "",
           },
           {
             label: "Ganhos totais",
             value: totalEarned,
             icon: Wallet,
-            color: "text-emerald-600",
+            color: "text-[hsl(var(--primary))]",
             suffix: "",
             format: "brl",
           },
@@ -145,63 +161,48 @@ export default function DashboardNutri() {
               ? stat.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
               : String(stat.value);
           return (
-            <Card key={stat.label} className="glass-card">
-              <CardContent className="pt-4 pb-4 text-center">
-                <Icon className={`h-6 w-6 mx-auto mb-1 ${stat.color}`} />
-                <p className="text-xl font-display font-bold">{display}</p>
-                <p className="text-xs text-muted-foreground">{stat.label}</p>
-              </CardContent>
-            </Card>
+            <div
+              key={stat.label}
+              className="card-clinical p-4 text-center shadow-sm transition-shadow hover:shadow-md"
+            >
+              <Icon className={cn("mx-auto mb-1.5 h-5 w-5", stat.color)} />
+              <p className="font-display text-lg font-bold tabular-nums text-[hsl(var(--ink-1))]">{display}</p>
+              <p className="text-[10px] font-medium font-sans text-[hsl(var(--ink-3))]">{stat.label}</p>
+            </div>
           );
         })}
       </div>
 
-      {/* ── Gráficos ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        {/* Validações do mês — LIBERADO PARA TODOS */}
-        <Card className="glass-card">
-          <CardHeader className="pb-2">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div className="card-clinical overflow-hidden border-[hsl(var(--surface-3))] p-0 shadow-sm">
+          <div className="border-b border-[1px] border-[hsl(var(--surface-3))] px-4 py-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-display flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-primary" />
-                Validações por Mês
-              </CardTitle>
-              <Badge variant="outline" className="text-[10px]">Todos os planos</Badge>
+              <h3 className="font-display flex items-center gap-2 text-sm font-semibold text-[hsl(var(--ink-1))]">
+                <BarChart3 className="h-4 w-4 text-[hsl(var(--primary))]" />
+                Validações por mês
+              </h3>
+              <Badge variant="outline" className="text-[10px] text-[hsl(var(--ink-3))]">Todos os planos</Badge>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="p-3">
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={MONTHLY_VALIDATIONS}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11 }}
-                  stroke="hsl(var(--muted-foreground))"
-                />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  stroke="hsl(var(--muted-foreground))"
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--surface-3))" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
+                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
                 <Tooltip
                   contentStyle={{
-                    background: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
+                    background: "hsl(var(--surface-0))",
+                    border: "1px solid hsl(var(--surface-3))",
                     borderRadius: 8,
                   }}
                 />
-                <Bar
-                  dataKey="validacoes"
-                  name="Validações"
-                  fill="hsl(160, 84%, 39%)"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar dataKey="validacoes" name="Validações" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* ── Evolução de Faturamento — BLOQUEADO PARA FREEMIUM E BASIC ── */}
         <div>
           <PlanGate
             tier={tier}
@@ -209,48 +210,38 @@ export default function DashboardNutri() {
             feature="Evolução de Faturamento — disponível no Plano Premium e Clínica"
             minHeight={240}
           >
-            {/* Este conteúdo só renderiza se tier >= premium */}
-            <Card className="glass-card h-full">
-              <CardHeader className="pb-2">
+            <div className="card-clinical h-full overflow-hidden border-[hsl(var(--surface-3))] p-0 shadow-sm">
+              <div className="border-b border-[1px] border-[hsl(var(--surface-3))] px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-display flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    Evolução de Faturamento (R$)
-                  </CardTitle>
-                  <Badge className="text-[10px] emerald-gradient text-primary-foreground">
-                    Premium+
-                  </Badge>
+                  <h3 className="font-display flex items-center gap-2 text-sm font-semibold text-[hsl(var(--ink-1))]">
+                    <TrendingUp className="h-4 w-4 text-[hsl(var(--primary))]" />
+                    Evolução de faturamento (R$)
+                  </h3>
+                  <Badge className="text-[10px] emerald-gradient text-primary-foreground">Premium+</Badge>
                 </div>
-              </CardHeader>
-              <CardContent>
+              </div>
+              <div className="p-3">
                 <ResponsiveContainer width="100%" height={180}>
                   <AreaChart data={MONTHLY_EARNINGS}>
                     <defs>
                       <linearGradient id="gradFat" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="hsl(160, 84%, 39%)" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(160, 84%, 39%)" stopOpacity={0}   />
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="gradLiq" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="hsl(217, 91%, 60%)" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0}   />
+                        <stop offset="5%" stopColor="hsl(var(--info))" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="hsl(var(--info))" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis
-                      dataKey="month"
-                      tick={{ fontSize: 11 }}
-                      stroke="hsl(var(--muted-foreground))"
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11 }}
-                      stroke="hsl(var(--muted-foreground))"
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--surface-3))" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
                     <Tooltip content={<BRLTooltip />} />
                     <Area
                       type="monotone"
                       dataKey="faturamento"
                       name="Faturamento bruto"
-                      stroke="hsl(160, 84%, 39%)"
+                      stroke="hsl(var(--primary))"
                       fill="url(#gradFat)"
                       strokeWidth={2}
                     />
@@ -258,75 +249,69 @@ export default function DashboardNutri() {
                       type="monotone"
                       dataKey="liquido"
                       name="Valor líquido"
-                      stroke="hsl(217, 91%, 60%)"
+                      stroke="hsl(var(--info))"
                       fill="url(#gradLiq)"
                       strokeWidth={2}
                       strokeDasharray="4 2"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </PlanGate>
         </div>
       </div>
 
       {/* ── Banner de saque (só aparece para planos que podem sacar) ── */}
       {["basic", "premium", "clinic"].includes(tier) && totalEarned > 0 && (
-        <Card className="glass-card border-primary/30">
-          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="card-clinical border-primary/25 p-0 overflow-hidden">
+          <div className="flex flex-col items-start justify-between gap-3 p-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl emerald-gradient flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl emerald-gradient">
                 <Wallet className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <p className="font-display font-semibold text-sm">
+                <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">
                   Você tem{" "}
                   {totalEarned.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
                   disponíveis para saque
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Processado em até 2 dias úteis via PIX
-                </p>
+                <p className="text-xs text-[hsl(var(--ink-3))]">Processado em até 2 dias úteis via PIX</p>
               </div>
             </div>
             <Button
               size="sm"
-              className="emerald-gradient text-primary-foreground gap-1.5 flex-shrink-0"
+              className="emerald-gradient flex-shrink-0 gap-1.5 text-primary-foreground"
               onClick={() => navigate("/cadastro-pix")}
             >
               Solicitar Saque <ArrowUpRight className="h-3.5 w-3.5" />
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      {/* Banner de saldo trancado para Freemium */}
       {tier === "freemium" && completedCount > 0 && (
-        <Card className="glass-card border-amber-300/40 bg-amber-50/40 dark:bg-amber-950/10">
-          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="card-clinical border-amber-300/50 bg-amber-50/50 p-0 dark:border-amber-800/50 dark:bg-amber-950/20">
+          <div className="flex flex-col items-start justify-between gap-3 p-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-3">
-              <Wallet className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <Wallet className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div>
-                <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">
-                  Saldo trancado:{" "}
-                  {totalEarned.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Saldo trancado: {totalEarned.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Faça upgrade para desbloquear saques. O saldo pode ser usado como desconto.
-                </p>
+                <p className="text-xs text-amber-800/90 dark:text-amber-400/90">Faça upgrade para desbloquear saques. O saldo pode ser usado como desconto.</p>
               </div>
             </div>
             <Button
               size="sm"
               variant="outline"
-              className="border-amber-400 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 flex-shrink-0"
+              className="flex-shrink-0 border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300"
               onClick={() => navigate("/planos")}
             >
               Ver Planos
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

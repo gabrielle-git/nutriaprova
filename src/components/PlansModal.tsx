@@ -1,8 +1,28 @@
+import { useState, useRef, useEffect } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useSpring,
+  useInView,
+  useTransform,
+} from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Crown, Sparkles, Building2, Zap, Coins, CreditCard, QrCode, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  Crown,
+  Sparkles,
+  Building2,
+  Zap,
+  Coins,
+  CreditCard,
+  QrCode,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface PlansModalProps {
   open: boolean;
@@ -10,170 +30,408 @@ interface PlansModalProps {
   currentTier?: string;
 }
 
-// Paleta harmônica (sem amarelo):
-//   - emerald (verde esmeralda) → plano principal / CTAs
-//   - teal (azul petróleo)       → plano Clínica / destaques premium
-// Evita qualquer `text-coin-gold` / `text-yellow-*` que poluía a UI.
+function formatBrl(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
 const PLANS = [
   {
     id: "basic",
     name: "Basic",
-    tagline: "Para quem está começando",
-    price: "Grátis",
-    priceDetail: "sem cobrança recorrente",
+    tagline: "Primeiros atendimentos",
+    priceMonthly: 39.9,
+    isFree: false,
+    priceDetail: "/mês",
     icon: Sparkles,
-    iconClass: "text-muted-foreground",
-    borderClass: "border-border",
+    iconClass: "text-[hsl(var(--ink-3))]",
     coins: "20 moedas iniciais",
     ai: "5 correções de IA por dia",
     benefits: [
-      "20 moedas iniciais ao ativar o plano",
-      "5 correções de IA por dia (Gemini)",
-      "R$ 15,00 por validação aprovada",
-      "Feed público de pedidos de dieta",
-      "Painel básico de ganhos",
+      "20 moedas iniciais",
+      "Assinatura digital (nome + CRN) nos PDFs",
+      "5 correções de IA por dia",
+      "R$ 15,00 por validação",
+      "Saque via Pix",
+    ],
+    notIncluded: [
+      "Upload de logomarca (white-label)",
+      "Leads exclusivos",
+      "Comissões de afiliados (10%)",
     ],
   },
   {
     id: "premium",
     name: "Premium",
-    tagline: "Para quem quer escalar",
-    price: "R$ 99,90",
+    tagline: "Escalando a carteira",
+    priceMonthly: 99.9,
+    isFree: false,
     priceDetail: "/mês",
     icon: Crown,
     iconClass: "text-primary",
-    borderClass: "border-primary",
     highlight: true,
-    coins: "120 moedas/mês",
+    coins: "120 moedas renovadas/mês",
     ai: "10 correções de IA por dia",
     benefits: [
-      "120 moedas renovadas todo mês",
-      "10 correções de IA por dia (Gemini)",
-      "Leads exclusivos encaminhados por Personals",
-      "Assinatura digital com CRN nos PDFs",
-      "Painel de retenção + WhatsApp Bot",
+      "120 moedas renovadas/mês",
+      "10 correções de IA por dia",
+      "Leads exclusivos",
+      "Assinatura digital (nome + CRN) nos PDFs",
+      "Upload de logomarca (white-label)",
       "Comissões de afiliados (10%)",
     ],
+    notIncluded: ["White-label equipe multi-nutri"],
   },
   {
     id: "clinic",
     name: "Clínica",
-    tagline: "Para clínicas e grupos",
-    price: "R$ 199,90",
+    tagline: "Equipe + marca própria",
+    priceMonthly: 199.9,
+    isFree: false,
     priceDetail: "/mês",
     icon: Building2,
-    // Verde esmeralda mais escuro / azul petróleo — harmoniza com o resto.
     iconClass: "text-teal-700 dark:text-teal-300",
-    borderClass: "border-teal-600/60 dark:border-teal-400/50",
     coins: "Moedas ilimitadas",
     ai: "IA ilimitada (sem cap diário)",
     benefits: [
-      "Moedas ilimitadas — validações sem custo por job",
-      "IA ilimitada (sem limite diário de correções)",
-      "White-label: logotipo da sua clínica nos PDFs",
-      "Assinatura personalizada + selo CRN",
-      "Até 4 nutricionistas parceiros no mesmo painel",
-      "Suporte prioritário e CRM de Leads",
+      "Moedas ilimitadas",
+      "IA ilimitada (sem cap diário)",
+      "Assinatura digital (nome + CRN) nos PDFs",
+      "White-label com logo da clínica",
+      "Até 4 nutricionistas no painel",
+      "Suporte prioritário + CRM",
+      "Todos os benefícios Premium",
     ],
+    notIncluded: [] as string[],
   },
 ];
 
+function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientY - rect.top) / rect.height - 0.5) * -10;
+    const y = ((e.clientX - rect.left) / rect.width - 0.5) * 10;
+    setTilt({ x, y });
+  };
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMove}
+      onMouseLeave={() => setTilt({ x: 0, y: 0 })}
+      animate={{ rotateX: tilt.x, rotateY: tilt.y }}
+      transition={{ type: "spring", stiffness: 250, damping: 25 }}
+      style={{ transformStyle: "preserve-3d", perspective: 1000 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/** Contador visual para reforço de urgência (SLA) — usa useSpring + useInView conforme PROMPT 6. */
+function ModalUrgencyHours() {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-5%" });
+  const spring = useSpring(0, { stiffness: 55, damping: 22 });
+  const display = useTransform(spring, (v) => Math.round(v).toString());
+  useEffect(() => {
+    if (isInView) spring.set(24);
+  }, [isInView, spring]);
+  return (
+    <motion.span ref={ref} className="text-brand-animated inline-block font-display text-lg font-bold tabular-nums">
+      {display}
+    </motion.span>
+  );
+}
+
 export default function PlansModal({ open, onOpenChange, currentTier = "basic" }: PlansModalProps) {
+  const [annual, setAnnual] = useState(false);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-display text-2xl">Planos e Assinaturas</DialogTitle>
-          <DialogDescription>
-            Escolha o plano ideal para escalar seus atendimentos no nutrIAprova.
-          </DialogDescription>
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+        <DialogHeader className="text-center sm:text-left">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <DialogTitle className="font-display text-2xl font-extrabold text-[hsl(var(--ink-1))]">
+              Planos e assinaturas
+            </DialogTitle>
+            <DialogDescription className="font-sans text-base text-[hsl(var(--ink-2))]">
+              Escolha o plano ideal para escalar seus atendimentos no nutrIAprova.
+            </DialogDescription>
+          </motion.div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-          {PLANS.map((plan) => {
+        <div className="relative mx-auto mt-2 flex w-full max-w-sm justify-center">
+          <div
+            className="bg-grid pointer-events-none absolute inset-0 -z-10 opacity-20"
+            aria-hidden
+          />
+          <motion.div
+            layout
+            className="relative inline-flex min-w-[260px] rounded-full bg-[hsl(var(--surface-2))] p-1 shadow-sm"
+            role="group"
+            aria-label="Mensal ou anual"
+          >
+            <motion.div
+              layoutId="billing-toggle-modal"
+              className="pointer-events-none absolute bottom-1 top-1 rounded-full bg-white shadow-sm"
+              style={{ width: "calc(50% - 4px)" }}
+              initial={false}
+              animate={{ left: annual ? "calc(50% + 0px)" : "4px" }}
+              transition={{ type: "spring", stiffness: 400, damping: 35 }}
+            />
+            <button
+              type="button"
+              onClick={() => setAnnual(false)}
+              className={cn(
+                "relative z-10 flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                !annual ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-3))]",
+              )}
+            >
+              Mensal
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnnual(true)}
+              className={cn(
+                "relative z-10 flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                annual ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-3))]",
+              )}
+            >
+              Anual
+              <motion.span
+                className="badge-gold !px-1.5 !py-0.5 text-[0.6rem] leading-none"
+                animate={{ scale: annual ? [1, 1.2, 1] : 1 }}
+                transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+              >
+                -20%
+              </motion.span>
+            </button>
+          </motion.div>
+        </div>
+        <p className="text-center text-[11px] text-[hsl(var(--ink-3))]">Exibição: preço anual = equivalente por mês com -20%.</p>
+
+        <div className="pulse-brand mt-4 rounded-xl border border-[hsl(var(--primary))]/20 bg-[hsl(var(--primary))]/5 px-4 py-3 text-center">
+          <p className="font-sans text-xs text-[hsl(var(--ink-2))]">
+            Resposta do onboarding em até{" "}
+            <ModalUrgencyHours />
+            <span className="text-brand-animated font-semibold">h</span>
+            {" "}úteis após a confirmação do pagamento.
+          </p>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3 md:items-stretch">
+          {PLANS.map((plan, index) => {
             const Icon = plan.icon;
             const isCurrent = currentTier === plan.id;
-            return (
+            const isHighlight = "highlight" in plan && plan.highlight;
+            const linePrice = (() => {
+              if (plan.isFree) {
+                return {
+                  main: "Grátis",
+                  suffix: "" as string,
+                  note: "sem cobrança recorrente" as string | null,
+                };
+              }
+              if (!annual) {
+                return { main: formatBrl(plan.priceMonthly), suffix: plan.priceDetail, note: null as string | null };
+              }
+              return {
+                main: formatBrl(plan.priceMonthly * 0.8),
+                suffix: plan.priceDetail,
+                note: "Fidelidade anual (-20%)",
+              };
+            })();
+            const priceKey = `${linePrice.main}|${annual}|${plan.id}`;
+
+            const cardInner = (
               <Card
-                key={plan.id}
-                className={`relative ${plan.borderClass} ${plan.highlight ? "border-2 shadow-lg" : "border"} ${
-                  isCurrent ? "ring-2 ring-primary/40" : ""
-                }`}
+                className={cn(
+                  "group relative flex min-h-full flex-col overflow-visible rounded-[var(--radius)]",
+                  isHighlight
+                    ? "border-2 border-[hsl(var(--primary))] shadow-card-hover"
+                    : "card-clinical",
+                  isCurrent && "ring-2 ring-primary/30",
+                  isHighlight && "border-beam gradient-border",
+                )}
               >
-                {plan.highlight && (
-                  <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
-                    Mais Popular
-                  </Badge>
+                {isHighlight && (
+                  <motion.div
+                    className="absolute -top-3 left-1/2 z-10 w-max min-w-0 -translate-x-1/2"
+                    initial={{ opacity: 0, y: -10, scale: 0.7 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ delay: 0.5, type: "spring", stiffness: 400, damping: 18 }}
+                  >
+                    <Badge className="rounded-full border-0 bg-[hsl(var(--primary))] px-2.5 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white sm:text-[11px]">
+                      Mais popular
+                    </Badge>
+                  </motion.div>
                 )}
                 {isCurrent && (
-                  <Badge variant="outline" className="absolute -top-2.5 right-3 bg-card border-primary text-primary">
-                    Plano Atual
+                  <Badge
+                    variant="outline"
+                    className="absolute -top-2.5 right-2 z-10 border-primary bg-card text-primary sm:right-3"
+                  >
+                    Plano atual
                   </Badge>
                 )}
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-2">
-                    <Icon className={`h-5 w-5 ${plan.iconClass}`} />
-                    <CardTitle className="font-display text-lg">{plan.name}</CardTitle>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{plan.tagline}</p>
-                  <div className="mt-3">
-                    <span className="text-3xl font-display font-bold">{plan.price}</span>
-                    <span className="text-sm text-muted-foreground ml-1">{plan.priceDetail}</span>
-                  </div>
 
-                  {/* Destaque rápido: Moedas + IA — tirar dúvida de um olhar */}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
-                      <Coins className={`h-3 w-3 ${plan.iconClass}`} />
-                      {plan.coins}
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
-                      <Zap className={`h-3 w-3 ${plan.iconClass}`} />
-                      {plan.ai}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <ul className="space-y-2">
-                    {plan.benefits.map((b, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <Check className={`h-4 w-4 mt-0.5 flex-shrink-0 ${plan.iconClass}`} />
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className={`w-full mt-4 ${plan.highlight ? "emerald-gradient text-primary-foreground" : ""}`}
-                    variant={plan.highlight ? "default" : "outline"}
-                    disabled={isCurrent}
-                  >
-                    {isCurrent ? "Plano Ativo" : `Assinar ${plan.name}`}
-                  </Button>
-                </CardContent>
+                <motion.div
+                  animate={isHighlight ? { y: [0, -4, 0] } : { y: 0 }}
+                  transition={
+                    isHighlight
+                      ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
+                      : { duration: 0.2 }
+                  }
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <Icon className={cn("h-5 w-5", plan.iconClass)} />
+                      <CardTitle className="font-display text-[1.25rem] font-bold text-[hsl(var(--ink-1))]">{plan.name}</CardTitle>
+                    </div>
+                    <p className="mt-1 font-sans text-xs text-[hsl(var(--ink-3))]">{plan.tagline}</p>
+                    <div className="mt-3 min-h-[3.2rem]">
+                      <div className="flex flex-wrap items-baseline gap-1">
+                        <span className="font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                          <AnimatePresence mode="wait">
+                            <motion.span
+                              key={priceKey}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -20 }}
+                              transition={{ duration: 0.2 }}
+                              className="inline-block"
+                            >
+                              {linePrice.main}
+                            </motion.span>
+                          </AnimatePresence>
+                        </span>
+                        {linePrice.suffix ? (
+                          <span className="font-sans text-sm text-[hsl(var(--ink-3))]">{linePrice.suffix}</span>
+                        ) : null}
+                      </div>
+                      {linePrice.note && <p className="mt-0.5 font-sans text-xs text-[hsl(var(--ink-3))]">{linePrice.note}</p>}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--surface-3))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ink-1))]">
+                        <Coins className={cn("h-3 w-3", plan.iconClass)} />
+                        {plan.coins}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--surface-3))] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--ink-1))]">
+                        <Zap className={cn("h-3 w-3", plan.iconClass)} />
+                        {plan.ai}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="mt-auto space-y-3">
+                    <ul className="space-y-2">
+                      {plan.benefits.map((b, fi) => (
+                        <motion.li
+                          key={b}
+                          className="flex items-start gap-2 font-sans text-sm text-[hsl(var(--ink-2))]"
+                          initial={{ opacity: 0, x: -16 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          viewport={{ once: true, amount: 0.1 }}
+                          transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                          <motion.span
+                            className="mt-0.5 inline-flex"
+                            initial={{ scale: 0, opacity: 0 }}
+                            whileInView={{ scale: 1, opacity: 1 }}
+                            viewport={{ once: true, amount: 0.1 }}
+                            transition={{
+                              delay: fi * 0.06 + 0.1,
+                              type: "spring",
+                              stiffness: 500,
+                              damping: 22,
+                            }}
+                          >
+                            <Check className="h-4 w-4 flex-shrink-0 text-primary" strokeWidth={2.5} />
+                          </motion.span>
+                          <span>{b}</span>
+                        </motion.li>
+                      ))}
+                      {plan.notIncluded.map((b) => (
+                        <li key={b} className="flex items-start gap-2 font-sans text-sm text-[hsl(var(--ink-3))]">
+                          <X className="mt-0.5 h-4 w-4 flex-shrink-0 opacity-80" strokeWidth={2} />
+                          <span className="line-through opacity-80">{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {isHighlight ? (
+                      <motion.div
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ type: "spring", stiffness: 350 }}
+                        className="mt-4"
+                      >
+                        <Button
+                          className={cn(
+                            "btn-primary btn-breathe border-beam relative w-full overflow-hidden shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)]",
+                          )}
+                          variant="default"
+                          disabled={isCurrent}
+                        >
+                          {isCurrent ? "Plano ativo" : `Assinar ${plan.name}`}
+                        </Button>
+                      </motion.div>
+                    ) : (
+                      <Button
+                        className="mt-4 w-full border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+                        variant="outline"
+                        disabled={isCurrent}
+                      >
+                        {isCurrent ? "Plano ativo" : `Assinar ${plan.name}`}
+                      </Button>
+                    )}
+                  </CardContent>
+                </motion.div>
               </Card>
+            );
+
+            return (
+              <motion.div
+                key={plan.id}
+                className="h-full"
+                initial={{ opacity: 0, y: 40, scale: 0.93 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true, amount: 0.2 }}
+                transition={{ delay: index * 0.12, ease: [0.16, 1, 0.3, 1], duration: 0.55 }}
+              >
+                <TiltCard className={cn("h-full", isHighlight && "rounded-[var(--radius)]")}>
+                  {cardInner}
+                </TiltCard>
+              </motion.div>
             );
           })}
         </div>
 
-        {/* Métodos de pagamento aceitos */}
-        <div className="mt-6 rounded-xl border border-border bg-muted/30 p-4">
-          <div className="flex items-center gap-2 mb-3">
+        <div className="mt-6 card-clinical rounded-[var(--radius)] p-4">
+          <div className="mb-3 flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            <p className="text-sm font-display font-semibold">Métodos de pagamento aceitos</p>
+            <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Métodos de pagamento aceitos</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+            <span className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] px-3 py-2 text-sm text-[hsl(var(--ink-1))]">
               <QrCode className="h-4 w-4 text-primary" />
               <span className="font-medium">Pix</span>
-              <span className="text-xs text-muted-foreground">— aprovação imediata</span>
+              <span className="text-xs text-[hsl(var(--ink-3))]">— aprovação imediata</span>
             </span>
-            <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+            <span className="inline-flex items-center gap-2 rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] px-3 py-2 text-sm text-[hsl(var(--ink-1))]">
               <CreditCard className="h-4 w-4 text-primary" />
               <span className="font-medium">Cartão de crédito</span>
-              <span className="text-xs text-muted-foreground">— Visa, Master, Elo, Amex</span>
+              <span className="text-xs text-[hsl(var(--ink-3))]">— Visa, Master, Elo, Amex</span>
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">
+          <p className="mt-3 font-sans text-xs text-[hsl(var(--ink-3))]">
             Pagamentos processados com criptografia. Cancele quando quiser, sem multa.
           </p>
         </div>

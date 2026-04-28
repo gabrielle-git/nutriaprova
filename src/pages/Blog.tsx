@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Leaf, ArrowRight, Clock, User, BookOpen, Search, TrendingUp, Plus, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import BlogEditor from "@/components/BlogEditor";
+import AppHeader from "@/components/AppHeader";
 import { MOCK_ARTICLES } from "@/lib/mockArticles";
 
 const SUPREME_EMAIL = "helena.gaby31@gmail.com";
@@ -28,6 +29,8 @@ interface BlogPost {
   author_id: string;
   created_at: string;
   status?: string;
+  author_display_name?: string | null;
+  author_role_label?: string | null;
   isMock?: boolean;
 }
 
@@ -67,13 +70,21 @@ export default function Blog() {
   const [searchQuery, setSearchQuery] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
+  const [myPending, setMyPending] = useState<BlogPost[]>([]);
 
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
   const role = profile?.role as string | undefined;
-  // RBAC estrito: apenas nutricionista OU admin podem criar/gerenciar artigos.
-  // Clientes e personal trainers são APENAS LEITURA. Sem backdoor por email.
-  const canManage = role === "nutritionist" || role === "admin";
+  const canManage =
+    isSupreme ||
+    role === "admin" ||
+    role === "nutritionist" ||
+    role === "personal_trainer";
   const isAdmin = role === "admin" || isSupreme;
+  const canEditOrDelete = (a: BlogPost) =>
+    !a.isMock &&
+    (isSupreme ||
+      profile?.role === "admin" ||
+      (a.author_id === user?.id && a.status === "pending_review"));
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -97,9 +108,36 @@ export default function Blog() {
     setLoading(false);
   };
 
+  const fetchMyPending = useCallback(async () => {
+    if (!user?.id || !canManage) {
+      setMyPending([]);
+      return;
+    }
+    if (isAdmin) {
+      setMyPending([]);
+      return;
+    }
+    const { data, error } = await supabase
+      .from("blog_posts")
+      .select("*")
+      .eq("author_id", user.id)
+      .eq("status", "pending_review")
+      .order("created_at", { ascending: false });
+    if (error) console.error(error);
+    setMyPending((data as BlogPost[]) || []);
+  }, [user?.id, canManage, isAdmin]);
+
   useEffect(() => {
-    fetchPosts();
+    void fetchPosts();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setMyPending([]);
+      return;
+    }
+    void fetchMyPending();
+  }, [user, fetchMyPending]);
 
   const handleDelete = async (post: BlogPost) => {
     if (post.isMock) {
@@ -125,23 +163,51 @@ export default function Blog() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-          <Leaf className="h-6 w-6 text-primary" />
-          <span className="font-display font-bold text-xl">Nutr<span className="text-primary">IA</span>prova</span>
-        </div>
-        <div className="flex items-center gap-3">
+      {user ? (
+        <>
+          <AppHeader />
           {canManage && (
-            <Button size="sm" className="emerald-gradient text-primary-foreground gap-1" onClick={() => { setEditingPost(null); setEditorOpen(true); }}>
-              <Plus className="h-4 w-4" /> Novo Artigo
-            </Button>
+            <div className="sticky top-16 z-40 border-b border-border/50 bg-card/80 backdrop-blur-sm">
+              <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-2 md:px-6">
+                <Button
+                  size="sm"
+                  className="emerald-gradient gap-1 text-primary-foreground"
+                  onClick={() => {
+                    setEditingPost(null);
+                    setEditorOpen(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4" /> Novo Artigo
+                </Button>
+              </div>
+            </div>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate("/para-nutricionistas")}>Sou Nutricionista</Button>
-          <Button variant="outline" onClick={() => navigate("/auth")}>Entrar</Button>
-        </div>
-      </header>
+        </>
+      ) : (
+        <header className="sticky top-0 z-50 flex items-center justify-between border-b border-border/50 bg-card/50 px-6 py-4 backdrop-blur-sm">
+          <div className="flex cursor-pointer items-center gap-2" onClick={() => navigate("/")}>
+            <Leaf className="h-6 w-6 text-primary" />
+            <span className="font-display text-xl font-bold">
+              Nutr<span className="text-primary">IA</span>prova
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {canManage && (
+              <Button size="sm" className="emerald-gradient gap-1 text-primary-foreground" onClick={() => { setEditingPost(null); setEditorOpen(true); }}>
+                <Plus className="h-4 w-4" /> Novo Artigo
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => navigate("/para-nutricionistas")}>
+              Sou Nutricionista
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/auth")}>
+              Entrar
+            </Button>
+          </div>
+        </header>
+      )}
 
-      <main className="max-w-5xl mx-auto px-4 md:px-6 py-8 md:py-12">
+      <main className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-12">
         {selectedArticle ? (
           <motion.article initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl mx-auto">
             <button onClick={() => setSelectedArticle(null)} className="text-sm text-muted-foreground hover:text-foreground mb-6 block">
@@ -152,9 +218,22 @@ export default function Blog() {
             )}
             <Badge variant="outline" className="mb-4">{selectedArticle.category}</Badge>
             <h1 className="text-3xl md:text-5xl font-display font-bold mb-4 leading-tight">{selectedArticle.title}</h1>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-8 pb-6 border-b border-border">
-              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {selectedArticle.read_time || "5 min"}</span>
+            <div className="mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-6 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5" /> {selectedArticle.read_time || "5 min"}
+              </span>
               <span>{new Date(selectedArticle.created_at).toLocaleDateString("pt-BR")}</span>
+              {!selectedArticle.isMock && (selectedArticle.author_display_name || selectedArticle.author_role_label) && (
+                <span className="flex items-center gap-1.5 text-foreground/90">
+                  <User className="h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    {selectedArticle.author_display_name || "Autor"}
+                    {selectedArticle.author_role_label ? (
+                      <span className="text-muted-foreground"> · {selectedArticle.author_role_label}</span>
+                    ) : null}
+                  </span>
+                </span>
+              )}
             </div>
             <div className="prose prose-lg dark:prose-invert max-w-none">
               {renderContent(selectedArticle.content)}
@@ -189,6 +268,40 @@ export default function Blog() {
                 <Input placeholder="Buscar artigos..." className="pl-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               </div>
             </motion.div>
+
+            {canManage && !isAdmin && myPending.length > 0 && (
+              <div className="mx-auto mb-10 max-w-3xl rounded-xl border border-primary/25 bg-[hsl(var(--primary)/0.06)] p-4 md:p-5">
+                <p className="mb-3 text-sm font-semibold text-[hsl(var(--ink-1))]">
+                  Seus artigos aguardando aprovação ({myPending.length})
+                </p>
+                <ul className="space-y-2">
+                  {myPending.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex flex-col gap-2 rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-[hsl(var(--ink-1))]">{p.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Enviado em {new Date(p.created_at).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        onClick={() => {
+                          setEditingPost(p);
+                          setEditorOpen(true);
+                        }}
+                      >
+                        Editar
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {loading ? (
               <div className="text-center py-16 text-muted-foreground">Carregando artigos...</div>
@@ -234,12 +347,24 @@ export default function Blog() {
                       )}
                       <CardContent className="p-6">
                         <p className="text-muted-foreground mb-4">{featuredArticle.excerpt}</p>
+                        {!featuredArticle.isMock &&
+                          (featuredArticle.author_display_name || featuredArticle.author_role_label) && (
+                            <p className="mb-4 text-xs text-muted-foreground">
+                              <span className="inline-flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                {featuredArticle.author_display_name || "Autor"}
+                                {featuredArticle.author_role_label
+                                  ? ` · ${featuredArticle.author_role_label}`
+                                  : ""}
+                              </span>
+                            </p>
+                          )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {featuredArticle.read_time}</span>
                             <span>{new Date(featuredArticle.created_at).toLocaleDateString("pt-BR")}</span>
                           </div>
-                          {!featuredArticle.isMock && canManage && (user?.id === featuredArticle.author_id || isSupreme || profile?.role === "admin") && (
+                          {canManage && canEditOrDelete(featuredArticle) && (
                             <div className="flex gap-1">
                               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); setEditingPost(featuredArticle); setEditorOpen(true); }}>
                                 <Pencil className="h-3.5 w-3.5" />
@@ -279,9 +404,18 @@ export default function Blog() {
                             </div>
                             <h2 className="text-lg font-display font-bold group-hover:text-primary transition-colors mb-2 leading-tight">{article.title}</h2>
                             <p className="text-sm text-muted-foreground line-clamp-2">{article.excerpt}</p>
+                            {!article.isMock && (article.author_display_name || article.author_role_label) && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  {article.author_display_name || "Autor"}
+                                  {article.author_role_label ? ` · ${article.author_role_label}` : ""}
+                                </span>
+                              </p>
+                            )}
                             <div className="flex items-center justify-between mt-3">
                               <p className="text-xs text-muted-foreground">{new Date(article.created_at).toLocaleDateString("pt-BR")}</p>
-                              {!article.isMock && canManage && (user?.id === article.author_id || isSupreme || profile?.role === "admin") && (
+                              {canManage && canEditOrDelete(article) && (
                                 <div className="flex gap-1">
                                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); setEditingPost(article); setEditorOpen(true); }}>
                                     <Pencil className="h-3 w-3" />
@@ -314,7 +448,15 @@ export default function Blog() {
         © 2026 nutrIAprova — Dados protegidos conforme LGPD
       </footer>
 
-      <BlogEditor open={editorOpen} onOpenChange={setEditorOpen} editingPost={editingPost} onSaved={fetchPosts} />
+      <BlogEditor
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        editingPost={editingPost}
+        onSaved={() => {
+          void fetchPosts();
+          void fetchMyPending();
+        }}
+      />
     </div>
   );
 }

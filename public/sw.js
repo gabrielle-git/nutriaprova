@@ -4,6 +4,8 @@
 // Proposital: SEM cache de assets, para não bagunçar o fluxo do Vite durante
 // dev/preview — o navegador continua servindo tudo pela rede.
 
+const CACHE_NAME = "nutriaprova-v2";
+
 self.addEventListener("install", (event) => {
   // Ativa imediatamente a nova versão do SW sem esperar abas antigas.
   self.skipWaiting();

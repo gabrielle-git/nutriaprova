@@ -102,6 +102,18 @@ export default {
           "0%": { opacity: "0", transform: "scale(0.96)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateY(16px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "pulse-brand": {
+          "0%, 100%": { boxShadow: "0 0 0 0 hsl(158 72% 32% / 0.4)" },
+          "50%": { boxShadow: "0 0 0 14px hsl(158 72% 32% / 0)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% center" },
+          "100%": { backgroundPosition: "200% center" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -109,6 +121,9 @@ export default {
         "fade-in": "fade-in 0.3s ease-out both",
         "fade-in-up": "fade-in-up 0.4s ease-out both",
         "scale-in": "scale-in 0.25s ease-out both",
+        "slide-up": "slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both",
+        "pulse-brand": "pulse-brand 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        shimmer: "shimmer 1.5s ease-in-out infinite",
       },
     },
   },

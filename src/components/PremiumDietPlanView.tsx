@@ -21,9 +21,9 @@ interface PremiumDietPlanViewProps {
   specialty?: string;
   signatureStyle?: "modern" | "classic" | "minimal";
   isCompleted?: boolean;
-  /** White-label: clinic logo URL (only rendered for Plano Clínica nutritionists). */
+  /** White-label: clinic logo URL (Premium / Clínica). */
   clinicLogoUrl?: string | null;
-  /** Tier of the validating professional. White-label only renders when "clinic". */
+  /** Tier do profissional validador — logo quando premium ou clínica. */
   professionalTier?: string | null;
 }
 
@@ -39,11 +39,11 @@ export default function PremiumDietPlanView({
 }: PremiumDietPlanViewProps) {
   if (!plan || !plan.meals) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/70 p-8 md:p-10">
-        <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-          <p className="font-display font-semibold text-base">Preparando seu plano alimentar...</p>
-          <p className="text-sm text-muted-foreground max-w-md">
+      <div className="card-clinical p-8 md:p-10">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+          <p className="font-display text-base font-semibold text-[hsl(var(--ink-1))]">Preparando seu plano alimentar...</p>
+          <p className="max-w-md text-sm text-[hsl(var(--ink-2))]">
             Estamos aguardando os dados da dieta para renderizar as refeições e os macronutrientes.
           </p>
         </div>
@@ -51,7 +51,9 @@ export default function PremiumDietPlanView({
     );
   }
 
-  const showClinicLogo = professionalTier === "clinic" && !!clinicLogoUrl;
+  const showClinicLogo =
+    (professionalTier === "clinic" || professionalTier === "premium") &&
+    !!clinicLogoUrl;
   const meals = Object.values(plan.meals ?? {});
   const totalProtein = meals.reduce((s, m) => s + (m?.protein ?? 0), 0);
   const totalCarbs = meals.reduce((s, m) => s + (m?.carbs ?? 0), 0);
@@ -79,8 +81,8 @@ export default function PremiumDietPlanView({
           {/* Inner content with subtle pattern */}
           <div className="rounded-xl bg-card overflow-hidden">
             {/* ===== DOCUMENT HEADER ===== */}
-            <div className="relative bg-gradient-to-r from-primary/10 via-accent/40 to-primary/10 px-6 py-8 border-b border-primary/20">
-              <div className="absolute top-0 left-0 w-full h-1 emerald-gradient" />
+            <div className="relative border-b border-[hsl(var(--surface-3))] bg-gradient-to-br from-[hsl(var(--surface-1))] to-[hsl(var(--surface-0))] px-6 py-8">
+              <div className="absolute left-0 top-0 h-1 w-full emerald-gradient" />
 
               {/* White-label co-branding bar (Plano Clínica only) */}
               {showClinicLogo && (
@@ -107,8 +109,8 @@ export default function PremiumDietPlanView({
                       {showClinicLogo ? "Plano Clínica · Documento Oficial" : "nutrIAprova"}
                     </span>
                   </div>
-                  <h1 className="font-display font-bold text-2xl text-foreground">Plano Alimentar Personalizado</h1>
-                  <p className="text-sm text-muted-foreground mt-1">Documento gerado por IA • Validado por Profissional CRN</p>
+                  <h1 className="font-display text-2xl font-bold text-[hsl(var(--ink-1))]">Plano alimentar personalizado</h1>
+                  <p className="mt-1 text-sm text-[hsl(var(--ink-2))]">Documento gerado por IA • Validado por profissional CRN</p>
                 </div>
                 <div className="text-right">
                   <Badge className="emerald-gradient text-primary-foreground text-lg px-5 py-2 font-display font-bold">
@@ -148,10 +150,19 @@ export default function PremiumDietPlanView({
               </div>
 
               {/* Visual macro bar */}
-              <div className="w-full h-3 rounded-full overflow-hidden flex">
-                <div className="bg-blue-500 h-full transition-all" style={{ width: `${protPct}%` }} />
-                <div className="bg-amber-500 h-full transition-all" style={{ width: `${carbPct}%` }} />
-                <div className="bg-rose-500 h-full transition-all" style={{ width: `${fatPct}%` }} />
+              <div className="flex h-[6px] w-full overflow-hidden rounded-full bg-[hsl(var(--surface-3))]">
+                <div
+                  className="h-full bg-blue-500 transition-all"
+                  style={{ width: `${protPct}%` }}
+                />
+                <div
+                  className="h-full bg-amber-500 transition-all"
+                  style={{ width: `${carbPct}%` }}
+                />
+                <div
+                  className="h-full bg-rose-500 transition-all"
+                  style={{ width: `${fatPct}%` }}
+                />
               </div>
               <div className="flex justify-between mt-1">
                 <span className="text-[10px] text-blue-500">Proteínas {protPct}%</span>
@@ -169,15 +180,17 @@ export default function PremiumDietPlanView({
                 <h2 className="font-display font-bold text-sm uppercase tracking-wider text-foreground">Receitas Detalhadas</h2>
               </div>
 
-              <div className="space-y-5">
+              <div className="overflow-hidden rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]">
                 {(["cafeDaManha", "lancheDaManha", "almoco", "lancheDaTarde", "jantar"] as const).map((key) => {
                   const meal = plan.meals[key];
                   if (!meal) return null;
                   const meta = MEAL_LABELS[key] || { label: key, emoji: "🍽️", time: "" };
                   return (
-                    <div key={key} className="rounded-xl border border-border/60 bg-card/80 overflow-hidden transition-shadow hover:shadow-md">
-                      {/* Meal Header */}
-                      <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-accent/60 to-transparent border-b border-border/30">
+                    <div
+                      key={key}
+                      className="border-b border-[hsl(var(--surface-3))] last:border-b-0"
+                    >
+                      <div className="flex items-center gap-3 border-b border-[hsl(var(--surface-3))] bg-gradient-to-r from-[hsl(var(--surface-1))] to-transparent px-5 py-3">
                         <span className="text-2xl">{meta.emoji}</span>
                         <div className="flex-1">
                           <p className="font-display font-bold text-sm">{meta.label}</p>
@@ -211,14 +224,14 @@ export default function PremiumDietPlanView({
 
                         {/* Macros Row */}
                         <div className="grid grid-cols-3 gap-2">
-                          <div className="flex items-center gap-1.5 text-xs rounded-lg bg-blue-50 dark:bg-blue-950/30 px-2.5 py-1.5 text-blue-700 dark:text-blue-300 font-medium">
-                            <Droplets className="h-3 w-3" /> P: {meal.protein}g
+                          <div className="flex items-center gap-1.5 rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] px-2.5 py-1.5 text-xs font-medium text-[hsl(var(--ink-2))]">
+                            <Droplets className="h-3 w-3 text-primary" /> P: {meal.protein}g
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs rounded-lg bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-amber-700 dark:text-amber-300 font-medium">
-                            <Wheat className="h-3 w-3" /> C: {meal.carbs}g
+                          <div className="flex items-center gap-1.5 rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] px-2.5 py-1.5 text-xs font-medium text-[hsl(var(--ink-2))]">
+                            <Wheat className="h-3 w-3 text-primary" /> C: {meal.carbs}g
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs rounded-lg bg-rose-50 dark:bg-rose-950/30 px-2.5 py-1.5 text-rose-700 dark:text-rose-300 font-medium">
-                            <Flame className="h-3 w-3" /> G: {meal.fat}g
+                          <div className="flex items-center gap-1.5 rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] px-2.5 py-1.5 text-xs font-medium text-[hsl(var(--ink-2))]">
+                            <Flame className="h-3 w-3 text-primary" /> G: {meal.fat}g
                           </div>
                         </div>
 

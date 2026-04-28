@@ -7,10 +7,16 @@ export interface ClientData {
   gender: "masculino" | "feminino";
   weight: number;
   height: number;
+  /** Percentual de gordura corporal (opcional), ex.: 18.5 */
+  bodyFat?: number;
   goal: string;
   allergies: string[];
   activityLevel: string;
   additionalNotes?: string;
+  /** Peso alvo (kg) — perda/ganho de peso. */
+  targetWeight?: number;
+  /** Prazo em meses para a meta de composição. */
+  targetTimelineMonths?: number;
 }
 
 export interface Meal {

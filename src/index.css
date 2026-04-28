@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap");
+/* nutrIAprova — design system: tipografia + paleta + utilitários premium (clínico) */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=JetBrains+Mono:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -24,6 +25,7 @@
     --radius: 0.875rem;
     --radius-sm: 0.5rem;
     --radius-xl: 1.5rem;
+    color-scheme: light;
 
     --background: var(--surface-1);
     --foreground: var(--ink-1);
@@ -31,7 +33,6 @@
     --card-foreground: var(--ink-1);
     --popover: var(--surface-0);
     --popover-foreground: var(--ink-1);
-
     --secondary: var(--surface-2);
     --secondary-foreground: var(--ink-1);
     --muted: var(--surface-2);
@@ -41,11 +42,9 @@
     --destructive: var(--danger);
     --primary-foreground: 0 0% 100%;
     --destructive-foreground: 0 0% 100%;
-
     --border: var(--surface-3);
     --input: var(--surface-3);
     --ring: var(--primary-glow);
-
     --sidebar-background: var(--surface-1);
     --sidebar-foreground: var(--ink-1);
     --sidebar-primary: var(--primary);
@@ -54,7 +53,6 @@
     --sidebar-accent-foreground: var(--ink-1);
     --sidebar-border: var(--surface-3);
     --sidebar-ring: var(--primary-glow);
-
     --emerald-glow: var(--primary-glow);
     --clinical-surface: var(--surface-0);
     --clinical-border: var(--surface-3);
@@ -63,6 +61,18 @@
     --status-pending: var(--warn);
     --status-review: var(--info);
     --status-completed: var(--primary-light);
+
+    /* Easing cinematográfico */
+    --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* Aurora — gradiente animado de fundo premium */
+    --aurora-1: hsl(158, 72%, 32%);
+    --aurora-2: hsl(172, 60%, 38%);
+    --aurora-3: hsl(142, 55%, 28%);
+    --aurora-4: hsl(188, 65%, 35%);
   }
 
   .dark {
@@ -73,6 +83,7 @@
     --ink-1: 150 15% 94%;
     --ink-2: 150 10% 72%;
     --ink-3: 150 8% 48%;
+    color-scheme: dark;
 
     --background: var(--surface-0);
     --foreground: var(--ink-1);
@@ -80,16 +91,13 @@
     --card-foreground: var(--ink-1);
     --popover: var(--surface-1);
     --popover-foreground: var(--ink-1);
-    --primary: 158 72% 36%;
-    --primary-light: 158 65% 45%;
-    --primary-glow: 158 80% 58%;
-    --primary-foreground: 0 0% 100%;
     --secondary: var(--surface-2);
     --secondary-foreground: var(--ink-1);
     --muted: var(--surface-2);
     --muted-foreground: var(--ink-2);
     --accent: 160 30% 18%;
     --accent-foreground: 158 60% 76%;
+    --primary-foreground: 0 0% 100%;
     --destructive: var(--danger);
     --destructive-foreground: 0 0% 100%;
     --border: var(--surface-3);
@@ -110,27 +118,48 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "DM Sans", sans-serif;
+    font-family: "DM Sans", system-ui, sans-serif;
     font-weight: 400;
-    letter-spacing: -0.005em;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.006em;
+    text-rendering: optimizeLegibility;
   }
+
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     font-weight: 700;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    font-feature-settings: "ss02";
   }
+
+  h1 {
+    font-weight: 800;
+  }
+
   code,
   pre,
   kbd,
   samp {
-    font-family: "JetBrains Mono", monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-feature-settings: "ss01", "cv01";
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+    color: hsl(var(--ink-1));
+  }
+
+  .dark ::selection {
+    background: hsl(var(--primary-glow) / 0.25);
+    color: hsl(var(--ink-1));
   }
 }
 
@@ -154,8 +183,15 @@
   .card-clinical:hover {
     box-shadow:
       0 2px 8px hsl(var(--ink-1) / 0.06),
-      0 12px 32px hsl(var(--primary) / 0.10);
+      0 12px 32px hsl(var(--primary) / 0.1);
     transform: translateY(-1px);
+  }
+
+  /* Plano em destaque (página de planos) — brilho verde */
+  .shadow-card-hover {
+    box-shadow:
+      0 2px 8px hsl(var(--ink-1) / 0.05),
+      0 10px 40px hsl(var(--primary) / 0.2);
   }
 
   .bg-hero {
@@ -166,9 +202,10 @@
   }
   .dark .bg-hero {
     background:
-      radial-gradient(ellipse 80% 60% at 20% 0%, hsl(158 72% 32% / 0.25) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 80% 10%, hsl(158 80% 55% / 0.12) 0%, transparent 50%),
-      hsl(var(--surface-0));
+      radial-gradient(ellipse 90% 70% at 50% -10%, hsl(158 45% 18% / 0.55) 0%, transparent 55%),
+      radial-gradient(ellipse 80% 60% at 20% 0%, hsl(158 72% 32% / 0.22) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 10%, hsl(158 80% 55% / 0.1) 0%, transparent 50%),
+      linear-gradient(180deg, hsl(162 22% 10%) 0%, hsl(162 28% 6%) 45%, hsl(160 20% 8%) 100%);
   }
 
   .text-brand {
@@ -198,7 +235,7 @@
     color: white;
     border-radius: var(--radius-sm);
     padding: 0.625rem 1.5rem;
-    font-family: "Plus Jakarta Sans", sans-serif;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
     font-weight: 600;
     font-size: 0.9375rem;
     letter-spacing: -0.01em;
@@ -231,17 +268,21 @@
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   .stagger > *:nth-child(1) { animation-delay: 0.05s; }
-  .stagger > *:nth-child(2) { animation-delay: 0.10s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.1s; }
   .stagger > *:nth-child(3) { animation-delay: 0.15s; }
-  .stagger > *:nth-child(4) { animation-delay: 0.20s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.2s; }
   .stagger > *:nth-child(5) { animation-delay: 0.25s; }
-  .stagger > *:nth-child(6) { animation-delay: 0.30s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.3s; }
   .stagger > *:nth-child(n+7) { animation-delay: 0.35s; }
 
   .pulse-brand {
     animation: pulseBrand 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 
+  .noise {
+    position: relative;
+    overflow: hidden;
+  }
   .noise::before {
     content: "";
     position: absolute;
@@ -251,7 +292,6 @@
     border-radius: inherit;
   }
 
-  /* Retrocompatibilidade visual com classes existentes no app */
   .glass-card {
     @apply glass card-clinical;
   }
@@ -285,12 +325,439 @@
     animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   .stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
-  .stagger-children > *:nth-child(2) { animation-delay: 0.10s; }
+  .stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
   .stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
-  .stagger-children > *:nth-child(4) { animation-delay: 0.20s; }
+  .stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
   .stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
-  .stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+  .stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
   .stagger-children > *:nth-child(n+7) { animation-delay: 0.35s; }
+
+  /* ───── AURORA BACKGROUND ───── */
+  /* Fundo aurora animado para hero sections */
+  .bg-aurora {
+    position: relative;
+    background: hsl(var(--surface-0));
+    overflow: hidden;
+  }
+  .bg-aurora::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background: conic-gradient(
+      from 0deg at 30% 40%,
+      transparent 0deg,
+      hsl(158 72% 32% / 0.15) 60deg,
+      transparent 120deg,
+      hsl(172 60% 38% / 0.1) 180deg,
+      transparent 240deg,
+      hsl(142 55% 28% / 0.12) 300deg,
+      transparent 360deg
+    );
+    animation: spin 20s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .bg-aurora > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Aurora bem suave para dashboards (menos contraste que .bg-aurora) */
+  .bg-aurora-soft {
+    position: relative;
+    overflow: hidden;
+  }
+  .bg-aurora-soft::before {
+    content: "";
+    position: absolute;
+    inset: -35%;
+    background: conic-gradient(
+      from 0deg at 50% 45%,
+      transparent 0deg,
+      hsl(158 72% 32% / 0.07) 70deg,
+      transparent 140deg,
+      hsl(172 55% 35% / 0.06) 220deg,
+      transparent 300deg
+    );
+    animation: spin 48s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .bg-aurora-soft > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ───── GRID PATTERN DE FUNDO ───── */
+  /* Grade sutil estilo Linear/Vercel */
+  .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--surface-3) / 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--surface-3) / 0.5) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .dark .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--surface-3) / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--surface-3) / 0.3) 1px, transparent 1px);
+  }
+
+  /* ───── DOT PATTERN ───── */
+  .bg-dots {
+    background-image: radial-gradient(hsl(var(--surface-3)) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .dark .bg-dots {
+    background-image: radial-gradient(hsl(var(--ink-3) / 0.25) 1px, transparent 1px);
+  }
+
+  /* ───── BORDER BEAM ───── */
+  /* Card com borda animada percorrendo as bordas (efeito premium) */
+  .border-beam {
+    position: relative;
+    isolation: isolate;
+  }
+  .border-beam::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--primary-glow)) 30%,
+      hsl(158 90% 70%) 50%,
+      hsl(var(--primary-glow)) 70%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    animation: borderBeam 3s linear infinite;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ───── SCAN LINE ───── */
+  /* Linha de scanner que passa sobre cards médicos/clínicos */
+  .card-scan {
+    position: relative;
+    overflow: hidden;
+  }
+  .card-scan::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--primary-glow) / 0.6) 20%,
+      hsl(158 90% 75%) 50%,
+      hsl(var(--primary-glow) / 0.6) 80%,
+      transparent 100%
+    );
+    animation: scanLine 4s ease-in-out infinite;
+    animation-delay: var(--scan-delay, 0s);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* ───── MAGNETIC FLOAT ───── */
+  .magnetic-float {
+    animation: magnetFloat 6s ease-in-out infinite;
+  }
+  .magnetic-float-slow {
+    animation: magnetFloat 9s ease-in-out infinite;
+    animation-delay: -3s;
+  }
+  .magnetic-float-fast {
+    animation: floatBob 4s ease-in-out infinite;
+  }
+
+  /* ───── CTA BREATHE ───── */
+  .btn-breathe {
+    animation: breathe 3s ease-in-out infinite;
+  }
+
+  /* ───── ICON GLOW ───── */
+  .icon-glow {
+    animation: iconGlow 3s ease-in-out infinite;
+  }
+
+  /* ───── WARP ENTRANCE ───── */
+  .animate-warp-in {
+    animation: warpIn 0.9s var(--ease-expo) both;
+  }
+
+  /* ───── REVEAL MASK ───── */
+  .animate-reveal {
+    animation: revealMask 0.8s var(--ease-expo) both;
+  }
+
+  /* ───── FLAP IN ───── */
+  .animate-flap {
+    animation: flapIn 0.7s var(--ease-expo) both;
+  }
+
+  /* ───── DISSOLVE UP ───── */
+  .animate-dissolve {
+    animation: dissolveUp 0.6s var(--ease-expo) both;
+  }
+
+  /* ───── SHIMMER PREMIUM ───── */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--surface-2)) 0%,
+      hsl(var(--surface-0)) 40%,
+      hsl(var(--primary-glow) / 0.15) 50%,
+      hsl(var(--surface-0)) 60%,
+      hsl(var(--surface-2)) 100%
+    );
+    background-size: 400px 100%;
+    animation: shimmerPremium 2s infinite linear;
+  }
+
+  /* ───── GLASSMORPHISM PREMIUM ───── */
+  /* Nível acima do .glass atual */
+  .glass-ultra {
+    background: hsl(var(--surface-0) / 0.6);
+    backdrop-filter: blur(40px) saturate(200%) brightness(110%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(110%);
+    border: 1px solid hsl(var(--surface-0) / 0.5);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--surface-0) / 0.6),
+      0 20px 40px hsl(var(--ink-1) / 0.08),
+      0 1px 0 hsl(var(--ink-1) / 0.04);
+  }
+  .dark .glass-ultra {
+    background: hsl(var(--surface-1) / 0.5);
+    border: 1px solid hsl(var(--surface-3) / 0.4);
+    box-shadow:
+      inset 0 1px 0 hsl(255 100% 100% / 0.06),
+      0 20px 40px hsl(0 0% 0% / 0.3);
+  }
+
+  /* ───── GRADIENT TEXT ANIMADO ───── */
+  .text-brand-animated {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--primary-glow)) 25%,
+      hsl(158 90% 65%) 50%,
+      hsl(var(--primary-glow)) 75%,
+      hsl(var(--primary)) 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmerPremium 12s linear infinite;
+  }
+
+  /* ───── SPOTLIGHT ───── */
+  /* Segue o cursor — aplicar via JS mouseMove */
+  .spotlight {
+    position: relative;
+    overflow: hidden;
+  }
+  .spotlight::before {
+    content: "";
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, hsl(var(--primary-glow) / 0.12) 0%, transparent 70%);
+    transform: translate(var(--mouse-x, -150px), var(--mouse-y, -150px)) translate(-50%, -50%);
+    pointer-events: none;
+    transition: transform 0.1s ease;
+    z-index: 0;
+  }
+
+  /* ───── CARD 3D TILT (via Framer Motion — só estrutura CSS) ───── */
+  .card-3d {
+    transform-style: preserve-3d;
+    transform: perspective(1000px);
+    transition: transform 0.15s ease;
+    will-change: transform;
+  }
+
+  /* ───── NUMBER COUNTER ROLL ───── */
+  .counter-digit {
+    display: inline-block;
+    overflow: hidden;
+    vertical-align: bottom;
+  }
+  .counter-digit span {
+    display: inline-block;
+    animation: counterRoll 0.4s var(--ease-expo) both;
+  }
+
+  /* ───── PROGRESS BAR ANIMADA ───── */
+  .progress-animated {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--surface-3));
+    border-radius: 999px;
+    height: 6px;
+  }
+  .progress-animated::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--progress, 0%);
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    border-radius: 999px;
+    transition: width 1.2s var(--ease-expo);
+  }
+  .progress-animated::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 60px;
+    background: linear-gradient(90deg, transparent, hsl(255 100% 100% / 0.4), transparent);
+    animation: shimmerPremium 2s infinite linear;
+    border-radius: 999px;
+  }
+
+  /* ───── STAGGER ULTRA (mais dramático) ───── */
+  .stagger-ultra > * {
+    opacity: 0;
+    animation: warpIn 0.7s var(--ease-expo) both;
+  }
+  .stagger-ultra > *:nth-child(1) {
+    animation-delay: 0.05s;
+  }
+  .stagger-ultra > *:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+  .stagger-ultra > *:nth-child(3) {
+    animation-delay: 0.19s;
+  }
+  .stagger-ultra > *:nth-child(4) {
+    animation-delay: 0.26s;
+  }
+  .stagger-ultra > *:nth-child(5) {
+    animation-delay: 0.33s;
+  }
+  .stagger-ultra > *:nth-child(6) {
+    animation-delay: 0.4s;
+  }
+  .stagger-ultra > *:nth-child(n + 7) {
+    animation-delay: 0.47s;
+  }
+
+  /* ───── BADGE PULSANTE ───── */
+  .badge-live {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge-live::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: hsl(var(--primary-glow));
+    animation: pulseBrand 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  /* ───── HOVER LIFT RADICAL ───── */
+  .hover-lift {
+    transition:
+      transform 0.25s var(--ease-expo),
+      box-shadow 0.25s var(--ease-expo);
+    will-change: transform;
+  }
+  .hover-lift:hover {
+    transform: translateY(-6px) scale(1.01);
+    box-shadow:
+      0 20px 40px hsl(var(--ink-1) / 0.1),
+      0 8px 16px hsl(var(--primary) / 0.15);
+  }
+  .hover-lift:active {
+    transform: translateY(-2px) scale(0.99);
+  }
+
+  /* ───── GLOW BORDER HOVER ───── */
+  .hover-glow {
+    transition:
+      box-shadow 0.3s ease,
+      border-color 0.3s ease;
+    border: 1px solid hsl(var(--surface-3));
+  }
+  .hover-glow:hover {
+    border-color: hsl(var(--primary) / 0.5);
+    box-shadow:
+      0 0 0 3px hsl(var(--primary) / 0.08),
+      0 8px 32px hsl(var(--primary) / 0.15);
+  }
+
+  /* ───── GRADIENT BORDER ───── */
+  /* Card com borda gradiente estática */
+  .gradient-border {
+    position: relative;
+    background: hsl(var(--surface-0));
+    border-radius: var(--radius);
+    isolation: isolate;
+  }
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--primary) / 0.5),
+      hsl(var(--primary-glow) / 0.3),
+      hsl(var(--primary) / 0.1),
+      hsl(var(--primary-glow) / 0.4)
+    );
+    z-index: -1;
+  }
+
+  /* ───── TIPO MÁQUINA DE ESCREVER ───── */
+  .typewriter {
+    overflow: hidden;
+    border-right: 2px solid hsl(var(--primary-glow));
+    white-space: nowrap;
+    animation:
+      typing 3.5s steps(40, end),
+      blink-caret 0.75s step-end infinite;
+  }
+  @keyframes typing {
+    from {
+      width: 0;
+    }
+    to {
+      width: 100%;
+    }
+  }
+  @keyframes blink-caret {
+    from,
+    to {
+      border-color: transparent;
+    }
+    50% {
+      border-color: hsl(var(--primary-glow));
+    }
+  }
 }
 
 @keyframes slideUp {
@@ -320,5 +787,184 @@
   }
   100% {
     background-position: 200% center;
+  }
+}
+
+/* Magnetismo suave — usado em cards e botões */
+@keyframes magnetFloat {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-6px) rotate(0.5deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(-0.5deg);
+  }
+}
+
+/* Respiração do botão CTA */
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 hsl(158 72% 32% / 0),
+      0 4px 20px hsl(158 72% 32% / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 8px hsl(158 72% 32% / 0),
+      0 8px 40px hsl(158 72% 32% / 0.6);
+  }
+}
+
+/* Entrada de texto letra a letra (usada em títulos hero) */
+@keyframes revealChar {
+  from {
+    opacity: 0;
+    transform: translateY(110%) skewY(3deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0%) skewY(0deg);
+  }
+}
+
+/* Scanner line — linha que passa sobre cards clínicos */
+@keyframes scanLine {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(600%);
+    opacity: 0;
+  }
+}
+
+/* Orbit — satélites girando em torno de um badge/ícone */
+@keyframes orbit {
+  from {
+    transform: rotate(0deg) translateX(28px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(28px) rotate(-360deg);
+  }
+}
+
+/* Shimmer premium — para skeletons e highlights */
+@keyframes shimmerPremium {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+/* Flap — animação de entrada de cards vindos da direita */
+@keyframes flapIn {
+  from {
+    opacity: 0;
+    transform: perspective(1000px) rotateY(-12deg) translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(1000px) rotateY(0deg) translateX(0);
+  }
+}
+
+/* Dissolve upward — para números em contadores */
+@keyframes dissolveUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0%);
+    filter: blur(0);
+  }
+}
+
+/* Glow pulse no ícone principal */
+@keyframes iconGlow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0px hsl(158 72% 55% / 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px hsl(158 72% 55% / 0.8));
+  }
+}
+
+/* Border beam — borda animada percorrendo o card */
+@keyframes borderBeam {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 300% 0%;
+  }
+}
+
+/* Warp — entrada explosiva do hero */
+@keyframes warpIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translateY(32px);
+    filter: blur(12px);
+  }
+  60% {
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Float bob — para elementos decorativos flutuantes */
+@keyframes floatBob {
+  0%,
+  100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  33% {
+    transform: translateY(-12px) translateX(4px);
+  }
+  66% {
+    transform: translateY(-6px) translateX(-3px);
+  }
+}
+
+/* Reveal mask — título que desvela da esquerda pra direita */
+@keyframes revealMask {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+
+/* Counter roll — dígitos rolando como display flip */
+@keyframes counterRoll {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0%);
+    opacity: 1;
   }
 }

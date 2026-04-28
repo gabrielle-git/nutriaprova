@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import LandingHero, { LandingHomeContinued } from "@/components/LandingHero";
+import LandingHero from "@/components/LandingHero";
 import { clearPendingSignup } from "@/lib/pendingSignup";
 import { useAuth } from "@/hooks/useAuth";
 import { isCRNValid } from "@/lib/masks";
@@ -17,13 +17,17 @@ function dashboardPathFor(
   if (role === "nutritionist") {
     const crnOk = isCRNValid((profile?.crn_number ?? "").trim());
     const nameOk = !!profile?.full_name?.trim();
-    return crnOk && nameOk ? "/nutri-dashboard" : "/onboarding";
+    return crnOk && nameOk ? "/inicio" : "/onboarding";
   }
-  if (role === "personal_trainer") return "/personal-dashboard";
-  if (role === "admin") return "/admin";
-  if (role === "client") return "/dashboard";
+  if (role === "personal_trainer") return "/inicio";
+  if (role === "admin") return "/inicio";
+  if (role === "client") return "/inicio";
   return null;
 }
+
+const LandingHomeContinued = lazy(() =>
+  import("@/components/LandingHomeContinued").then((m) => ({ default: m.LandingHomeContinued })),
+);
 
 export default function Index() {
   const navigate = useNavigate();
@@ -60,7 +64,17 @@ export default function Index() {
   return (
     <div className="bg-background overflow-x-hidden">
       <LandingHero />
-      <LandingHomeContinued />
+      <Suspense
+        fallback={
+          <div
+            className="min-h-[40vh] border-t border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))]"
+            aria-busy
+            aria-label="Carregando conteúdo"
+          />
+        }
+      >
+        <LandingHomeContinued />
+      </Suspense>
     </div>
   );
 }

@@ -20,6 +20,7 @@ import Blog from "./pages/Blog";
 import PersonalTrainer from "./pages/PersonalTrainer"; // landing pública /personal-trainer
 import Planos from "./pages/Planos";
 import NotFound from "./pages/NotFound";
+import InicioPage from "./pages/InicioPage";
 
 // Páginas autenticadas
 import Configuracoes from "./pages/Configuracoes";
@@ -71,6 +72,11 @@ function AnimatedRoutes() {
       } />
 
       {/* ── Autenticadas ─────────────────────────────────────────── */}
+      <Route path="/inicio" element={
+        <RouteGuard>
+          <PageTransition><InicioPage /></PageTransition>
+        </RouteGuard>
+      } />
       <Route path="/configuracoes" element={
         <RouteGuard>
           <PageTransition><Configuracoes /></PageTransition>

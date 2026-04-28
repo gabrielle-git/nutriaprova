@@ -1,4 +1,12 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useScroll,
+  useTransform,
+  useSpring,
+  useInView,
+} from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Leaf, LogOut, ShieldCheck, Users, Stethoscope, DollarSign,
+  LogOut, Users, Stethoscope, DollarSign,
   AlertTriangle, Eye, FileText, Coins, Zap, FlaskConical,
   Search, Crown, CheckCircle2, Loader2, ShieldAlert, BadgeCheck, MinusCircle, PlusCircle, Star, MessageSquare,
   User, Dumbbell, BookOpen, Check, X
@@ -25,12 +33,120 @@ import ClinicLogoUpload from "@/components/ClinicLogoUpload";
 import LeadHunterCRM from "@/components/admin/LeadHunterCRM";
 import { Radar } from "lucide-react";
 import type { DietPlan } from "@/services/n8nService";
+import { blogAuthorBylineFromProfile } from "@/lib/utils";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+} from "recharts";
 
 type Profile = any;
 type Transaction = any;
 type DietRequest = any;
 
 const SUPREME_EMAIL = "helena.gaby31@gmail.com";
+
+const TITLE_WORDS = ["Admin", "Supremo"] as const;
+
+const adminShell =
+  "dark min-h-screen bg-[hsl(162_28%_4%)] text-[hsl(var(--ink-1))]";
+
+function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true });
+  const spring = useSpring(0, { stiffness: 80, damping: 20 });
+  const display = useTransform(spring, (v) => {
+    const f =
+      decimals <= 0
+        ? Math.round(v)
+        : Math.round(v * 10 ** decimals) / 10 ** decimals;
+    return f.toLocaleString("pt-BR", {
+      minimumFractionDigits: decimals > 0 ? decimals : 0,
+      maximumFractionDigits: decimals,
+    });
+  });
+  useEffect(() => {
+    if (isInView) spring.set(value);
+  }, [isInView, value, spring]);
+  return (
+    <motion.span ref={ref} className="tabular-nums">
+      {display}
+    </motion.span>
+  );
+}
+
+const MotionTableRow = motion(TableRow);
+
+const kpiContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const kpiItemVariants = {
+  hidden: { opacity: 0, y: 20, scale: 0.96 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { ease: [0.16, 1, 0.3, 1] as const, duration: 0.45 },
+  },
+};
+
+const thControl =
+  "bg-[hsl(var(--surface-2))] font-display text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--ink-2))] text-left border-b border-[hsl(var(--surface-3))] h-10 px-3";
+
+const trStriped = (i: number) =>
+  [i % 2 === 0 ? "bg-[hsl(var(--surface-0))]" : "bg-[hsl(var(--surface-1))]", "border-[hsl(var(--surface-3))]"].join(" ");
+
+const headerRow = "border-[hsl(var(--surface-3))] hover:bg-transparent";
+
+function roleBadgeForAdmin(role: string) {
+  switch (role) {
+    case "client":
+      return "border border-teal-500/50 bg-teal-500/10 text-teal-300";
+    case "nutritionist":
+      return "border border-blue-500/50 bg-blue-500/10 text-blue-300";
+    case "personal_trainer":
+      return "border border-amber-500/50 bg-amber-500/10 text-amber-200";
+    case "admin":
+      return "border border-red-500/50 bg-red-500/10 text-red-300";
+    default:
+      return "border border-[hsl(var(--surface-3))] text-[hsl(var(--ink-2))]";
+  }
+}
+
+function roleLabelForAdmin(role: string) {
+  if (role === "admin") return "Admin";
+  if (role === "nutritionist") return "Nutricionista";
+  if (role === "personal_trainer") return "Personal";
+  return "Cliente";
+}
+
+function RoleBadgeSpring({ role }: { role: string }) {
+  return (
+    <motion.div
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 500, damping: 22 }}
+      className="inline-flex"
+    >
+      <Badge variant="outline" className={roleBadgeForAdmin(role)}>
+        {roleLabelForAdmin(role)}
+      </Badge>
+    </motion.div>
+  );
+}
+
+const cardSupreme =
+  "card-clinical card-scan border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] shadow-sm";
+
+const dangerActionWrap = "rounded-xl border border-dashed border-red-800/40 bg-red-950/20 p-4";
 
 export default function AdminSupremo() {
   const { user, profile, loading, signOut } = useAuth();
@@ -61,8 +177,14 @@ export default function AdminSupremo() {
   // CRN Audit
   const [crnVerifying, setCrnVerifying] = useState<Record<string, boolean>>({});
   const [crnResults, setCrnResults] = useState<Record<string, "valid" | "alert" | null>>({});
+  const [clock, setClock] = useState(() => new Date());
 
   const isSupremeAdmin = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
+
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!loading && !isSupremeAdmin) {
@@ -92,10 +214,25 @@ export default function AdminSupremo() {
   };
 
   const approvePost = async (postId: string) => {
-    const { error } = await supabase.from("blog_posts" as any).update({ status: "published" } as any).eq("id", postId);
+    const post = pendingPosts.find((p) => p.id === postId);
+    const author = post ? profiles.find((p) => p.user_id === post.author_id) : null;
+    const fromProfile = blogAuthorBylineFromProfile(author);
+    const author_display_name =
+      (fromProfile.author_display_name || author?.full_name || post?.author_display_name || "").trim() || "Autor";
+    const author_role_label =
+      (fromProfile.author_role_label || post?.author_role_label || "").trim() || "Autor";
+    const { error } = await supabase
+      .from("blog_posts" as any)
+      .update({
+        status: "published",
+        published: true,
+        author_display_name,
+        author_role_label,
+      } as any)
+      .eq("id", postId);
     if (error) toast.error(error.message);
     else {
-      toast.success("Artigo aprovado e publicado!");
+      toast.success("Artigo aprovado e publicado com o nome do autor.");
       fetchData();
     }
   };
@@ -170,6 +307,29 @@ export default function AdminSupremo() {
       t.id.includes(transactionSearch)
     ), [transactions, transactionSearch]);
 
+  const txChartData = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach((t: Transaction) => {
+      const d = new Date(t.created_at);
+      const key = d.toISOString().slice(0, 10);
+      map.set(key, (map.get(key) ?? 0) + Math.abs(Number(t.amount) || 0));
+    });
+    const out: { day: string; volume: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      out.push({
+        day: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+        volume: map.get(key) ?? 0,
+      });
+    }
+    return out;
+  }, [transactions]);
+
+  const { scrollY } = useScroll();
+  const gridOpacity = useTransform(scrollY, [0, 500], [0.2, 0.08]);
+
   const nutritionists = allUsers.filter(p => p.role === "nutritionist");
   const clients = allUsers.filter(p => p.role === "client");
   const completedCount = dietRequests.filter(d => d.status === "completed").length;
@@ -177,220 +337,387 @@ export default function AdminSupremo() {
 
   if (loading || !isSupremeAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[hsl(160,20%,5%)]">
-        <Crown className="h-8 w-8 text-primary animate-pulse" />
-      </div>
+      <motion.div
+        className={`${adminShell} relative flex min-h-screen items-center justify-center`}
+        style={{ colorScheme: "dark" }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div
+          className="pointer-events-none absolute inset-0 bg-grid opacity-20 [background-image:linear-gradient(hsl(158_35%_22%_/_0.35)_1px,transparent_1px),linear-gradient(90deg,hsl(158_35%_22%_/_0.35)_1px,transparent_1px)]"
+          aria-hidden
+        />
+        <Crown className="relative z-10 h-8 w-8 text-primary animate-pulse" />
+      </motion.div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(160,20%,5%)] text-[hsl(150,10%,90%)]">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-[hsl(160,15%,15%)] bg-[hsl(160,20%,7%)]/90 backdrop-blur-sm sticky top-0 z-50">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
-          <Crown className="h-5 w-5 text-primary" />
-          <span className="font-display font-bold text-[hsl(150,10%,95%)]">Nutr<span className="text-primary">IA</span>prova</span>
-          <Badge className="ml-2 text-xs bg-primary/20 text-primary border-primary/40">
-            ADMIN SUPREMO
+    <motion.div
+      className={`${adminShell} relative min-h-screen`}
+      style={{ colorScheme: "dark" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <motion.div
+        className="pointer-events-none fixed top-0 left-0 right-0 z-[999]"
+        style={{
+          height: "2px",
+          background: "linear-gradient(90deg, transparent, hsl(158 80% 55%), transparent)",
+          boxShadow: "0 0 20px hsl(158 80% 55% / 0.8)",
+        }}
+        animate={{ x: ["-100%", "100%"] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", repeatDelay: 8 }}
+      />
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+        <motion.div
+          className="bg-grid absolute inset-0"
+          style={{
+            opacity: gridOpacity,
+            backgroundImage:
+              "linear-gradient(hsl(158 35% 22% / 0.35) 1px, transparent 1px), linear-gradient(90deg, hsl(158 35% 22% / 0.35) 1px, transparent 1px)",
+          }}
+        />
+        <div className="absolute inset-0 bg-[hsl(158_40%_12%_/_0.06)]" />
+        <div
+          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[hsl(158_80%_55%_/_0.22)] to-transparent"
+          style={{
+            top: "22%",
+            animation: "scanLine 11s ease-in-out infinite",
+            animationDelay: "1.5s",
+          }}
+        />
+        <div
+          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[hsl(158_80%_55%_/_0.15)] to-transparent"
+          style={{
+            top: "58%",
+            animation: "scanLine 13s ease-in-out infinite",
+            animationDelay: "6s",
+          }}
+        />
+      </div>
+
+      <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[hsl(var(--surface-3))] bg-[hsl(162,22%,6%)]/95 px-4 py-3 backdrop-blur-md md:px-6">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left md:gap-3"
+        >
+          <Crown className="h-5 w-5 shrink-0 text-primary" />
+          <motion.div
+            className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+            whileHover={{
+              textShadow: [
+                "0 0 0 transparent",
+                "2px 0 0 hsl(0 80% 55% / 0.5), -2px 0 0 hsl(217 85% 55% / 0.5)",
+                "0 0 0 transparent",
+              ],
+              transition: { duration: 0.3 },
+            }}
+          >
+            <h1 className="font-display flex flex-wrap items-baseline gap-x-2 text-lg font-extrabold leading-none tracking-[-0.04em] text-[hsl(var(--ink-1))] min-[400px]:text-xl">
+              {TITLE_WORDS.map((word, i) => (
+                <span key={`${word}-${i}`} className="inline-block overflow-hidden pb-0.5">
+                  <motion.span
+                    className="inline-block"
+                    initial={{ y: "110%", opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{
+                      delay: 0.08 + i * 0.11,
+                      duration: 0.55,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                  >
+                    {word}
+                  </motion.span>
+                </span>
+              ))}
+            </h1>
+          </motion.div>
+          <Badge
+            className="hidden border border-red-800 bg-red-950 text-[0.7rem] font-bold uppercase leading-none text-red-300 sm:inline-flex"
+            variant="outline"
+          >
+            ⚡ SUPREMO
           </Badge>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-[hsl(150,10%,55%)] hidden sm:inline">{user?.email}</span>
-          <Button variant="ghost" size="sm" onClick={signOut} className="text-[hsl(150,10%,55%)] hover:text-[hsl(150,10%,90%)]">
+        </button>
+        <div className="flex items-center gap-2 sm:gap-4">
+          <time
+            className="max-w-[9rem] shrink-0 truncate font-mono text-[10px] leading-tight text-[hsl(var(--ink-3))] sm:max-w-none sm:text-xs"
+            dateTime={clock.toISOString()}
+            suppressHydrationWarning
+          >
+            {clock.toLocaleString("pt-BR", {
+              weekday: "short",
+              day: "2-digit",
+              month: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
+          </time>
+          <span className="max-w-[140px] truncate text-xs text-[hsl(var(--ink-3))] sm:max-w-none sm:text-sm">{user?.email}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={signOut}
+            className="shrink-0 text-[hsl(var(--ink-3))] hover:text-[hsl(var(--ink-1))]"
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto p-4 md:p-6">
-        {/* Title + God Mode */}
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
-          <h1 className="text-2xl md:text-3xl font-display font-bold flex items-center gap-2 text-[hsl(150,10%,95%)]">
-            <ShieldCheck className="h-6 md:h-7 w-6 md:w-7 text-primary" />
-            Painel Admin Supremo
-          </h1>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/5">
-            <Zap className="h-4 w-4 text-primary" />
-            <span className="text-xs font-semibold text-primary">God Mode</span>
+      <div className="relative z-10 mx-auto max-w-7xl p-4 md:p-6">
+        <div className="mb-6 flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
+          <p className="max-w-2xl font-mono text-[11px] font-normal uppercase tracking-[0.2em] text-[hsl(var(--ink-3))]">
+            Nódulo de controle · acesso level supremo
+          </p>
+          <div className="flex w-full items-center justify-between gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 sm:w-auto">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold text-primary">God Mode</span>
+            </div>
             <Switch checked={devMode} onCheckedChange={setDevMode} />
           </div>
         </div>
 
-        {devMode && (
-          <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 mb-6 flex items-center gap-3">
-            <FlaskConical className="h-5 w-5 text-primary flex-shrink-0" />
-            <div>
-              <p className="font-display font-bold text-sm text-[hsl(150,10%,95%)]">🧪 God Mode Ativo — CRN Bypass + Controle Total</p>
-              <p className="text-xs text-[hsl(150,10%,55%)]">
-                Simule validações, adicione moedas, marque dietas como concluídas e teste todo o fluxo sem restrições.
-              </p>
-            </div>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {devMode && (
+            <motion.div
+              key="god-banner"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-6 overflow-hidden"
+            >
+              <div className="flex items-center gap-3 rounded-lg border-2 border-primary/30 bg-primary/5 p-4">
+                <FlaskConical className="h-5 w-5 flex-shrink-0 text-primary" />
+                <div>
+                  <p className="font-display text-sm font-bold text-[hsl(var(--ink-1))]">
+                    🧪 God Mode ativo — CRN bypass + controle total
+                  </p>
+                  <p className="text-xs text-[hsl(var(--ink-3))]">
+                    Simule validações, adicione moedas, marque dietas como concluídas e teste todo o fluxo sem restrições.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* View-As Buttons */}
-        {devMode && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-            <Button
-              variant="outline"
-              className="gap-2 border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] hover:bg-primary/10 hover:border-primary/40 h-12"
-              onClick={() => navigate("/?as=client")}
+        <AnimatePresence initial={false}>
+          {devMode && (
+            <motion.div
+              key="god-nav"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3"
             >
-              <User className="h-4 w-4 text-primary" />
-              Ver Visão do Cliente
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] hover:bg-primary/10 hover:border-primary/40 h-12"
-              onClick={() => navigate("/?as=nutritionist")}
-            >
-              <Stethoscope className="h-4 w-4 text-primary" />
-              Ver Visão do Nutricionista
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] hover:bg-primary/10 hover:border-primary/40 h-12"
-              onClick={() => navigate("/personal-dashboard")}
-            >
-              <Dumbbell className="h-4 w-4 text-primary" />
-              Ver Visão do Personal
-            </Button>
-          </div>
-        )}
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/?as=client")}
+              >
+                <User className="h-4 w-4 text-primary" />
+                Ver visão do cliente
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/?as=nutritionist")}
+              >
+                <Stethoscope className="h-4 w-4 text-primary" />
+                Ver visão do nutricionista
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/personal-dashboard")}
+              >
+                <Dumbbell className="h-4 w-4 text-primary" />
+                Ver visão do personal
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-            <CardContent className="pt-6 flex items-center gap-3">
-              <DollarSign className="h-7 w-7 text-primary flex-shrink-0" />
-              <div>
-                <p className="text-xl md:text-2xl font-display font-bold text-[hsl(150,10%,95%)]">R$ {(completedCount * 39.9).toFixed(2)}</p>
-                <p className="text-xs text-[hsl(150,10%,55%)]">Receita Total</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-            <CardContent className="pt-6 flex items-center gap-3">
-              <Stethoscope className="h-7 w-7 text-primary flex-shrink-0" />
-              <div>
-                <p className="text-xl md:text-2xl font-display font-bold text-[hsl(150,10%,95%)]">{nutritionists.length}</p>
-                <p className="text-xs text-[hsl(150,10%,55%)]">Nutricionistas</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-            <CardContent className="pt-6 flex items-center gap-3">
-              <Users className="h-7 w-7 text-primary flex-shrink-0" />
-              <div>
-                <p className="text-xl md:text-2xl font-display font-bold text-[hsl(150,10%,95%)]">{clients.length}</p>
-                <p className="text-xs text-[hsl(150,10%,55%)]">Clientes</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-            <CardContent className="pt-6 flex items-center gap-3">
-              <AlertTriangle className="h-7 w-7 text-[hsl(var(--coin-gold))] flex-shrink-0" />
-              <div>
-                <p className="text-xl md:text-2xl font-display font-bold text-[hsl(150,10%,95%)]">{pendingCount}</p>
-                <p className="text-xs text-[hsl(150,10%,55%)]">Pendentes</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <motion.div
+          className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+          variants={kpiContainerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+        >
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <DollarSign className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Receita total</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  R$ <AnimatedNumber value={completedCount * 39.9} decimals={2} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <Stethoscope className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Nutricionistas</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={nutritionists.length} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <Users className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Clientes</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={clients.length} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <AlertTriangle className="mb-2 h-6 w-6 text-[hsl(var(--coin-gold))]/90" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Pendentes</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={pendingCount} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
 
         <Tabs defaultValue="audit" className="space-y-4">
-          <TabsList className="bg-[hsl(160,20%,10%)] border border-[hsl(160,15%,15%)] flex-wrap">
-            <TabsTrigger value="audit" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <Users className="h-4 w-4 mr-1" /> Auditoria
+          <TabsList className="flex w-full flex-wrap gap-0.5 border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1.5">
+            <TabsTrigger
+              value="audit"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <Users className="mr-1 h-4 w-4" /> Auditoria
             </TabsTrigger>
-            <TabsTrigger value="queue" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <FileText className="h-4 w-4 mr-1" /> Fila de Dietas
+            <TabsTrigger
+              value="queue"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <FileText className="mr-1 h-4 w-4" /> Fila de dietas
             </TabsTrigger>
-            <TabsTrigger value="financial" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <DollarSign className="h-4 w-4 mr-1" /> Financeiro
+            <TabsTrigger
+              value="financial"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <DollarSign className="mr-1 h-4 w-4" /> Financeiro
             </TabsTrigger>
-            <TabsTrigger value="crn-audit" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <ShieldAlert className="h-4 w-4 mr-1" /> Auditoria CRN
+            <TabsTrigger
+              value="crn-audit"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <ShieldAlert className="mr-1 h-4 w-4" /> Auditoria CRN
             </TabsTrigger>
-            <TabsTrigger value="feedback" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <Star className="h-4 w-4 mr-1" /> Controle de Qualidade
+            <TabsTrigger
+              value="feedback"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <Star className="mr-1 h-4 w-4" /> Qualidade
             </TabsTrigger>
-            <TabsTrigger value="blog-triage" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <BookOpen className="h-4 w-4 mr-1" /> Moderação de Conteúdo
+            <TabsTrigger
+              value="blog-triage"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <BookOpen className="mr-1 h-4 w-4" /> Moderação
               {pendingPosts.length > 0 && (
-                <Badge className="ml-1.5 bg-[hsl(45,93%,47%)] text-black text-[10px] px-1.5 py-0 h-4">
+                <Badge className="ml-1.5 h-4 border border-amber-500/30 bg-amber-500/15 px-1.5 py-0 text-[10px] text-amber-200">
                   {pendingPosts.length}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="plans" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <Crown className="h-4 w-4 mr-1" /> Planos & Clínica
+            <TabsTrigger
+              value="plans"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <Crown className="mr-1 h-4 w-4" /> Planos & clínica
             </TabsTrigger>
-            <TabsTrigger value="crm" className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              <Radar className="h-4 w-4 mr-1" /> Radar de Leads
+            <TabsTrigger
+              value="crm"
+              className="data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:text-primary data-[state=active]:shadow-sm"
+            >
+              <Radar className="mr-1 h-4 w-4" /> Radar de leads
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="crm">
-            <LeadHunterCRM />
+            <div className="rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-1">
+              <LeadHunterCRM />
+            </div>
           </TabsContent>
 
           {/* User Audit */}
           <TabsContent value="audit">
-            <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <Card className={cardSupreme}>
               <CardHeader className="pb-3">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <CardTitle className="font-display text-[hsl(150,10%,95%)]">Auditoria de Usuários</CardTitle>
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                  <CardTitle className="font-display text-[hsl(var(--ink-1))]">Auditoria de usuários</CardTitle>
                   <div className="relative w-full sm:w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(150,10%,55%)]" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--ink-3))]" />
                     <Input
                       placeholder="Buscar por nome ou CRN..."
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
-                      className="pl-9 bg-[hsl(160,20%,6%)] border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] placeholder:text-[hsl(150,10%,40%)]"
+                      className="border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] pl-9 text-[hsl(var(--ink-1))] placeholder:text-[hsl(var(--ink-3))]"
                     />
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-md border border-[hsl(var(--surface-3))]">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-[hsl(160,15%,15%)] hover:bg-transparent">
-                        <TableHead className="text-[hsl(150,10%,55%)]">Nome</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Papel</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">CRN</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Moedas</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Status</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Dietas</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Ações</TableHead>
+                      <TableRow className={headerRow}>
+                        <TableHead className={thControl}>Nome</TableHead>
+                        <TableHead className={thControl}>Papel</TableHead>
+                        <TableHead className={thControl}>CRN</TableHead>
+                        <TableHead className={thControl}>Moedas</TableHead>
+                        <TableHead className={thControl}>Status</TableHead>
+                        <TableHead className={thControl}>Dietas</TableHead>
+                        <TableHead className={thControl}>Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allUsers.map((p) => {
+                      {allUsers.map((p, rowIdx) => {
                         const userDiets = dietRequests.filter(d =>
                           p.role === "nutritionist" ? d.nutritionist_id === p.user_id : d.client_id === p.user_id
                         );
                         return (
-                          <TableRow key={p.id} className="border-[hsl(160,15%,15%)] hover:bg-[hsl(160,20%,10%)]">
-                            <TableCell className="font-medium text-[hsl(150,10%,90%)]">{p.full_name || "—"}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={
-                                p.role === "admin" ? "border-primary text-primary" :
-                                p.role === "nutritionist" ? "border-[hsl(217,91%,60%)] text-[hsl(217,91%,60%)]" :
-                                "border-[hsl(150,10%,55%)] text-[hsl(150,10%,55%)]"
-                              }>
-                                {p.role === "admin" ? "Admin" : p.role === "nutritionist" ? "Nutricionista" : "Cliente"}
-                              </Badge>
+                          <MotionTableRow
+                            key={p.id}
+                            className={trStriped(rowIdx)}
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
+                          >
+                            <TableCell className="px-3 font-medium text-[hsl(var(--ink-1))]">{p.full_name || "—"}</TableCell>
+                            <TableCell className="px-3">
+                              <RoleBadgeSpring role={p.role} />
                             </TableCell>
-                            <TableCell className="text-[hsl(150,10%,55%)]">{p.crn_number || "—"}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1 text-[hsl(150,10%,90%)]">
+                            <TableCell className="px-3 text-[hsl(var(--ink-2))]">{p.crn_number || "—"}</TableCell>
+                            <TableCell className="px-3">
+                              <div className="flex items-center gap-1 text-[hsl(var(--ink-1))]">
                                 <Coins className="h-3 w-3 text-[hsl(45,93%,47%)]" />
                                 {p.credits}
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-3">
                               {p.role === "nutritionist" && (
                                 <div className="flex items-center gap-2">
                                   <Badge variant={p.approved ? "default" : "destructive"} className="text-xs">
@@ -400,45 +727,57 @@ export default function AdminSupremo() {
                                 </div>
                               )}
                             </TableCell>
-                            <TableCell className="text-[hsl(150,10%,55%)]">{userDiets.length}</TableCell>
-                            <TableCell>
+                            <TableCell className="px-3 text-[hsl(var(--ink-2))]">{userDiets.length}</TableCell>
+                            <TableCell className="px-3">
                             {(p.role === "nutritionist" || p.role === "admin") && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className={`h-7 w-7 ${(creditAction[p.id] || "add") === "add" ? "text-primary" : "text-muted-foreground"}`}
-                                    onClick={() => setCreditAction({ ...creditAction, [p.id]: "add" })}
-                                  >
-                                    <PlusCircle className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className={`h-7 w-7 ${creditAction[p.id] === "remove" ? "text-destructive" : "text-muted-foreground"}`}
-                                    onClick={() => setCreditAction({ ...creditAction, [p.id]: "remove" })}
-                                  >
-                                    <MinusCircle className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Input
-                                    type="number"
-                                    placeholder="Qtd"
-                                    className="w-16 h-8 text-xs bg-[hsl(160,20%,6%)] border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)]"
-                                    value={creditAmount[p.id] || ""}
-                                    onChange={(e) => setCreditAmount({ ...creditAmount, [p.id]: e.target.value })}
-                                  />
-                                  <Button size="sm" variant="outline" className="h-8 text-xs border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] hover:bg-[hsl(160,20%,12%)]" onClick={() => addCredits(p)}>
-                                    <Coins className="h-3 w-3 mr-1" /> {(creditAction[p.id] || "add") === "add" ? "Add" : "Rem"}
-                                  </Button>
+                                <div
+                                  className={
+                                    (creditAction[p.id] || "add") === "remove" ? dangerActionWrap : "flex items-center gap-1"
+                                  }
+                                >
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className={`h-7 w-7 ${(creditAction[p.id] || "add") === "add" ? "text-primary" : "text-muted-foreground"}`}
+                                      onClick={() => setCreditAction({ ...creditAction, [p.id]: "add" })}
+                                    >
+                                      <PlusCircle className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className={`h-7 w-7 ${creditAction[p.id] === "remove" ? "text-destructive" : "text-muted-foreground"}`}
+                                      onClick={() => setCreditAction({ ...creditAction, [p.id]: "remove" })}
+                                    >
+                                      <MinusCircle className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Input
+                                      type="number"
+                                      placeholder="Qtd"
+                                      className="h-8 w-16 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-xs text-[hsl(var(--ink-1))]"
+                                      value={creditAmount[p.id] || ""}
+                                      onChange={(e) => setCreditAmount({ ...creditAmount, [p.id]: e.target.value })}
+                                    />
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-8 border-[hsl(var(--surface-3))] text-xs text-[hsl(var(--ink-1))] hover:bg-[hsl(var(--surface-2))]"
+                                      onClick={() => addCredits(p)}
+                                    >
+                                      <Coins className="mr-1 h-3 w-3" /> {(creditAction[p.id] || "add") === "add" ? "Add" : "Rem"}
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                             </TableCell>
-                          </TableRow>
+                          </MotionTableRow>
                         );
                       })}
                       {allUsers.length === 0 && (
-                        <TableRow className="border-[hsl(160,15%,15%)]">
-                          <TableCell colSpan={7} className="text-center text-[hsl(150,10%,55%)] py-8">
+                        <TableRow className="border-[hsl(var(--surface-3))]">
+                          <TableCell colSpan={7} className="py-8 text-center text-[hsl(var(--ink-3))]">
                             Nenhum usuário encontrado
                           </TableCell>
                         </TableRow>
@@ -452,15 +791,15 @@ export default function AdminSupremo() {
 
           {/* Diet Queue */}
           <TabsContent value="queue">
-            <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <Card className={cardSupreme}>
               <CardHeader className="pb-3">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <CardTitle className="font-display text-[hsl(150,10%,95%)]">Fila de Solicitações</CardTitle>
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                  <CardTitle className="font-display text-[hsl(var(--ink-1))]">Fila de solicitações</CardTitle>
                   <Select value={dietStatusFilter} onValueChange={setDietStatusFilter}>
-                    <SelectTrigger className="w-48 bg-[hsl(160,20%,6%)] border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)]">
+                    <SelectTrigger className="w-48 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-[hsl(var(--ink-1))]">
                       <SelectValue placeholder="Filtrar por status" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+                    <SelectContent className="border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]">
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="pending">Pendente</SelectItem>
                       <SelectItem value="in_review">Em Revisão</SelectItem>
@@ -470,42 +809,67 @@ export default function AdminSupremo() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-md border border-[hsl(var(--surface-3))]">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-[hsl(160,15%,15%)] hover:bg-transparent">
-                        <TableHead className="text-[hsl(150,10%,55%)]">ID</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Status</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Criado</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Horas</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Alerta</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Ações</TableHead>
+                      <TableRow className={headerRow}>
+                        <TableHead className={thControl}>ID</TableHead>
+                        <TableHead className={thControl}>Status</TableHead>
+                        <TableHead className={thControl}>Criado</TableHead>
+                        <TableHead className={thControl}>Horas</TableHead>
+                        <TableHead className={thControl}>Alerta</TableHead>
+                        <TableHead className={thControl}>Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredDiets.map((req) => {
+                      {filteredDiets.map((req, rowIdx) => {
                         const hours = getHoursPending(req.created_at);
                         const isUrgent = req.status === "pending" && hours >= 18;
                         return (
-                          <TableRow key={req.id} className={`border-[hsl(160,15%,15%)] hover:bg-[hsl(160,20%,10%)] ${isUrgent ? "bg-destructive/10" : ""}`}>
-                            <TableCell className="font-mono text-xs text-[hsl(150,10%,55%)]">{req.id.slice(0, 8)}</TableCell>
-                            <TableCell>
-                              <Badge variant={req.status === "completed" ? "default" : req.status === "in_review" ? "secondary" : "outline"}
-                                className={req.status === "pending" ? "border-[hsl(38,92%,50%)] text-[hsl(38,92%,50%)]" : ""}>
-                                {req.status === "pending" ? "Pendente" : req.status === "in_review" ? "Em Revisão" : "Concluído"}
-                              </Badge>
+                          <MotionTableRow
+                            key={req.id}
+                            className={
+                              isUrgent
+                                ? "border-[hsl(var(--surface-3))] bg-destructive/10"
+                                : trStriped(rowIdx)
+                            }
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
+                          >
+                            <TableCell className="px-3 font-mono text-xs text-[hsl(var(--ink-2))]">{req.id.slice(0, 8)}</TableCell>
+                            <TableCell className="px-3">
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                className="inline-flex"
+                              >
+                                <Badge variant={req.status === "completed" ? "default" : req.status === "in_review" ? "secondary" : "outline"}
+                                  className={req.status === "pending" ? "border-[hsl(38,92%,50%)] text-[hsl(38,92%,50%)]" : ""}>
+                                  {req.status === "pending" ? "Pendente" : req.status === "in_review" ? "Em Revisão" : "Concluído"}
+                                </Badge>
+                              </motion.div>
                             </TableCell>
-                            <TableCell className="text-xs text-[hsl(150,10%,55%)]">{new Date(req.created_at).toLocaleString("pt-BR")}</TableCell>
-                            <TableCell>
+                            <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{new Date(req.created_at).toLocaleString("pt-BR")}</TableCell>
+                            <TableCell className="px-3">
                               {req.status === "pending" ? (
-                                <span className={`text-[hsl(150,10%,90%)] ${isUrgent ? "text-destructive font-bold" : ""}`}>{hours.toFixed(1)}h</span>
+                                <span className={`text-[hsl(var(--ink-1))] ${isUrgent ? "font-bold text-destructive" : ""}`}>{hours.toFixed(1)}h</span>
                               ) : "—"}
                             </TableCell>
-                            <TableCell>
-                              {isUrgent && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />SLA 24h</Badge>}
+                            <TableCell className="px-3">
+                              {isUrgent && (
+                                <motion.div
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                  className="inline-flex"
+                                >
+                                  <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />SLA 24h</Badge>
+                                </motion.div>
+                              )}
                             </TableCell>
-                             <TableCell>
-                              <div className="flex items-center gap-2">
+                             <TableCell className="px-3">
+                              <div className="flex flex-wrap items-center gap-2">
                                 {req.ai_draft && (
                                   <Button size="sm" variant="outline"
                                     className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
@@ -517,24 +881,31 @@ export default function AdminSupremo() {
                                   <>
                                     <Button size="sm" variant="outline"
                                       className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
-                                      onClick={() => { setSimRequest(req); setSimOpen(true); }}>
+                                      onClick={() => {
+                                        toast.info("Abrindo simulação do fluxo…", { duration: 1800 });
+                                        setSimRequest(req);
+                                        setSimOpen(true);
+                                      }}>
                                       <Eye className="h-3 w-3" /> Testar Fluxo
                                     </Button>
                                     <Button size="sm" variant="outline"
                                       className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
-                                      onClick={() => markDietCompleted(req)}>
+                                      onClick={() => {
+                                        toast.info("Enviando validação da dieta…", { duration: 1800 });
+                                        void markDietCompleted(req);
+                                      }}>
                                       <CheckCircle2 className="h-3 w-3" /> Validar
                                     </Button>
                                   </>
                                 )}
                               </div>
                             </TableCell>
-                          </TableRow>
+                          </MotionTableRow>
                         );
                       })}
                       {filteredDiets.length === 0 && (
-                        <TableRow className="border-[hsl(160,15%,15%)]">
-                          <TableCell colSpan={6} className="text-center text-[hsl(150,10%,55%)] py-8">
+                        <TableRow className="border-[hsl(var(--surface-3))]">
+                          <TableCell colSpan={6} className="py-8 text-center text-[hsl(var(--ink-3))]">
                             Nenhuma solicitação encontrada
                           </TableCell>
                         </TableRow>
@@ -549,81 +920,136 @@ export default function AdminSupremo() {
           {/* Financial */}
           <TabsContent value="financial">
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-2xl font-display font-bold text-primary">R$ {(completedCount * 39.9).toFixed(2)}</p>
-                    <p className="text-xs text-[hsl(150,10%,55%)]">Receita Bruta (R$ 39,90/plano)</p>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Card className={cardSupreme}>
+                  <CardContent className="p-6 text-center">
+                    <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Receita bruta</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                      R$ <AnimatedNumber value={completedCount * 39.9} decimals={2} />
+                    </p>
+                    <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 39,90 / plano</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-2xl font-display font-bold text-destructive">R$ {(completedCount * 15).toFixed(2)}</p>
-                    <p className="text-xs text-[hsl(150,10%,55%)]">Pendente p/ Nutricionistas (R$ 15/validação)</p>
+                <Card className={cardSupreme}>
+                  <CardContent className="p-6 text-center">
+                    <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Pendente p/ nutris</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-destructive">
+                      R$ <AnimatedNumber value={completedCount * 15} decimals={2} />
+                    </p>
+                    <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 15 / validação</p>
                   </CardContent>
                 </Card>
-                <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
-                  <CardContent className="pt-6 text-center">
-                    <p className="text-2xl font-display font-bold text-primary">R$ {(completedCount * 24.9).toFixed(2)}</p>
-                    <p className="text-xs text-[hsl(150,10%,55%)]">Lucro Plataforma (R$ 24,90/plano)</p>
+                <Card className={cardSupreme}>
+                  <CardContent className="p-6 text-center">
+                    <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Lucro plataforma</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                      R$ <AnimatedNumber value={completedCount * 24.9} decimals={2} />
+                    </p>
+                    <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 24,90 / plano</p>
                   </CardContent>
                 </Card>
               </div>
 
-              <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+              <Card className={cardSupreme}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="font-display text-sm text-[hsl(var(--ink-2))]">
+                    Volume de movimentações (14 dias)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="h-[220px] pt-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={txChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(158 40% 20%)" />
+                      <XAxis dataKey="day" tick={{ fill: "hsl(var(--ink-3))", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "hsl(var(--ink-3))", fontSize: 10 }} width={36} />
+                      <Area
+                        type="monotone"
+                        dataKey="volume"
+                        stroke="hsl(158 80% 55%)"
+                        fill="hsl(158 72% 32% / 0.2)"
+                        isAnimationActive
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card className={cardSupreme}>
                 <CardHeader className="pb-3">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <CardTitle className="font-display text-[hsl(150,10%,95%)]">Log de Transações</CardTitle>
+                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+                    <CardTitle className="font-display text-[hsl(var(--ink-1))]">Log de transações</CardTitle>
                     <div className="relative w-full sm:w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(150,10%,55%)]" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--ink-3))]" />
                       <Input
                         placeholder="Buscar transações..."
                         value={transactionSearch}
                         onChange={(e) => setTransactionSearch(e.target.value)}
-                        className="pl-9 bg-[hsl(160,20%,6%)] border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)] placeholder:text-[hsl(150,10%,40%)]"
+                        className="border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] pl-9 text-[hsl(var(--ink-1))] placeholder:text-[hsl(var(--ink-3))]"
                       />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto rounded-md border border-[hsl(var(--surface-3))]">
                     <Table>
                       <TableHeader>
-                        <TableRow className="border-[hsl(160,15%,15%)] hover:bg-transparent">
-                          <TableHead className="text-[hsl(150,10%,55%)]">ID</TableHead>
-                          <TableHead className="text-[hsl(150,10%,55%)]">Tipo</TableHead>
-                          <TableHead className="text-[hsl(150,10%,55%)]">Valor</TableHead>
-                          <TableHead className="text-[hsl(150,10%,55%)]">Split</TableHead>
-                          <TableHead className="text-[hsl(150,10%,55%)]">Descrição</TableHead>
-                          <TableHead className="text-[hsl(150,10%,55%)]">Data</TableHead>
+                        <TableRow className={headerRow}>
+                          <TableHead className={thControl}>ID</TableHead>
+                          <TableHead className={thControl}>Tipo</TableHead>
+                          <TableHead className={thControl}>Valor</TableHead>
+                          <TableHead className={thControl}>Split</TableHead>
+                          <TableHead className={thControl}>Descrição</TableHead>
+                          <TableHead className={thControl}>Data</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredTransactions.map((t) => (
-                          <TableRow key={t.id} className="border-[hsl(160,15%,15%)] hover:bg-[hsl(160,20%,10%)]">
-                            <TableCell className="font-mono text-xs text-[hsl(150,10%,55%)]">{t.id.slice(0, 8)}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="border-[hsl(160,15%,18%)] text-[hsl(150,10%,90%)]">
-                                {t.type === "credit_purchase" ? "Compra" : t.type === "job_acceptance" ? "Aceite" : "Reembolso"}
-                              </Badge>
+                        {filteredTransactions.map((t, rowIdx) => (
+                          <MotionTableRow
+                            key={t.id}
+                            className={trStriped(rowIdx)}
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
+                          >
+                            <TableCell className="px-3 font-mono text-xs text-[hsl(var(--ink-2))]">{t.id.slice(0, 8)}</TableCell>
+                            <TableCell className="px-3">
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                className="inline-flex"
+                              >
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    t.type === "credit_purchase"
+                                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                                      : t.type === "job_acceptance"
+                                        ? "border-blue-500/50 bg-blue-500/10 text-blue-200"
+                                        : "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                                  }
+                                >
+                                  {t.type === "credit_purchase" ? "Compra" : t.type === "job_acceptance" ? "Aceite" : "Reembolso"}
+                                </Badge>
+                              </motion.div>
                             </TableCell>
-                            <TableCell className={t.amount >= 0 ? "text-primary" : "text-destructive"}>
+                            <TableCell className={`px-3 font-medium ${t.amount >= 0 ? "text-primary" : "text-destructive"}`}>
                               {t.amount >= 0 ? "+" : ""}{t.amount}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-3">
                               <div className="text-xs">
                                 <span className="text-primary">R$ 24,90</span>
-                                <span className="text-[hsl(150,10%,55%)]"> / </span>
-                                <span className="text-[hsl(150,10%,90%)]">R$ 15,00</span>
+                                <span className="text-[hsl(var(--ink-3))]"> / </span>
+                                <span className="text-[hsl(var(--ink-1))]">R$ 15,00</span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-xs text-[hsl(150,10%,55%)]">{t.description || "—"}</TableCell>
-                            <TableCell className="text-xs text-[hsl(150,10%,55%)]">{new Date(t.created_at).toLocaleDateString("pt-BR")}</TableCell>
-                          </TableRow>
+                            <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{t.description || "—"}</TableCell>
+                            <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{new Date(t.created_at).toLocaleDateString("pt-BR")}</TableCell>
+                          </MotionTableRow>
                         ))}
                         {filteredTransactions.length === 0 && (
-                          <TableRow className="border-[hsl(160,15%,15%)]">
-                            <TableCell colSpan={6} className="text-center text-[hsl(150,10%,55%)] py-8">
+                          <TableRow className="border-[hsl(var(--surface-3))]">
+                            <TableCell colSpan={6} className="py-8 text-center text-[hsl(var(--ink-3))]">
                               Nenhuma transação
                             </TableCell>
                           </TableRow>
@@ -638,46 +1064,58 @@ export default function AdminSupremo() {
 
           {/* CRN Audit */}
           <TabsContent value="crn-audit">
-            <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <Card className={cardSupreme}>
               <CardHeader className="pb-3">
-                <CardTitle className="font-display text-[hsl(150,10%,95%)] flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display text-[hsl(var(--ink-1))]">
                   <ShieldAlert className="h-5 w-5 text-primary" />
-                  Auditoria de CRN — Verificação com IA
+                  Auditoria de CRN — verificação com IA
                 </CardTitle>
-                <p className="text-xs text-[hsl(150,10%,55%)]">
+                <p className="text-xs text-[hsl(var(--ink-3))]">
                   Simule a consulta automatizada à base nacional de registros profissionais.
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-md border border-[hsl(var(--surface-3))]">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-[hsl(160,15%,15%)] hover:bg-transparent">
-                        <TableHead className="text-[hsl(150,10%,55%)]">Nome</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">CRN</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Status Aprovação</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Resultado IA</TableHead>
-                        <TableHead className="text-[hsl(150,10%,55%)]">Ação</TableHead>
+                      <TableRow className={headerRow}>
+                        <TableHead className={thControl}>Nome</TableHead>
+                        <TableHead className={thControl}>CRN</TableHead>
+                        <TableHead className={thControl}>Status aprovação</TableHead>
+                        <TableHead className={thControl}>Resultado IA</TableHead>
+                        <TableHead className={thControl}>Ação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {nutritionists.map((p) => (
-                        <TableRow key={p.id} className="border-[hsl(160,15%,15%)] hover:bg-[hsl(160,20%,10%)]">
-                          <TableCell className="font-medium text-[hsl(150,10%,90%)]">{p.full_name || "—"}</TableCell>
-                          <TableCell className="font-mono text-sm text-[hsl(150,10%,90%)]">{p.crn_number || "Não informado"}</TableCell>
-                          <TableCell>
-                            <Badge variant={p.approved ? "default" : "destructive"} className="text-xs">
-                              {p.approved ? "Aprovado" : "Pendente"}
-                            </Badge>
+                      {nutritionists.map((p, rowIdx) => (
+                        <MotionTableRow
+                          key={p.id}
+                          className={trStriped(rowIdx)}
+                          whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                          transition={{ duration: 0.1 }}
+                        >
+                          <TableCell className="px-3 font-medium text-[hsl(var(--ink-1))]">{p.full_name || "—"}</TableCell>
+                          <TableCell className="px-3 font-mono text-sm text-[hsl(var(--ink-1))]">{p.crn_number || "Não informado"}</TableCell>
+                          <TableCell className="px-3">
+                            <motion.div
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                              className="inline-flex"
+                            >
+                              <Badge variant={p.approved ? "default" : "destructive"} className="text-xs">
+                                {p.approved ? "Aprovado" : "Pendente"}
+                              </Badge>
+                            </motion.div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-3">
                             {crnVerifying[p.id] ? (
-                              <div className="flex items-center gap-2 text-xs text-[hsl(150,10%,55%)]">
+                              <div className="flex items-center gap-2 text-xs text-[hsl(var(--ink-3))]">
                                 <Loader2 className="h-3 w-3 animate-spin" />
                                 Consultando base nacional...
                               </div>
                             ) : crnResults[p.id] === "valid" ? (
-                              <Badge className="gap-1 bg-primary/20 text-primary border-primary/30">
+                              <Badge className="gap-1 border border-primary/30 bg-primary/20 text-primary">
                                 <BadgeCheck className="h-3 w-3" /> Validado: Nome confere com CRN
                               </Badge>
                             ) : crnResults[p.id] === "alert" ? (
@@ -685,14 +1123,14 @@ export default function AdminSupremo() {
                                 <AlertTriangle className="h-3 w-3" /> Alerta: Divergência de Dados
                               </Badge>
                             ) : (
-                              <span className="text-xs text-[hsl(150,10%,40%)]">Não verificado</span>
+                              <span className="text-xs text-[hsl(var(--ink-3))]">Não verificado</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-3">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
+                              className="gap-1 border-primary/30 text-xs text-primary hover:bg-primary/10"
                               onClick={() => handleCrnVerify(p.id)}
                               disabled={crnVerifying[p.id] || !p.crn_number}
                             >
@@ -704,11 +1142,11 @@ export default function AdminSupremo() {
                               Verificar com IA
                             </Button>
                           </TableCell>
-                        </TableRow>
+                        </MotionTableRow>
                       ))}
                       {nutritionists.length === 0 && (
-                        <TableRow className="border-[hsl(160,15%,15%)]">
-                          <TableCell colSpan={5} className="text-center text-[hsl(150,10%,55%)] py-8">
+                        <TableRow className="border-[hsl(var(--surface-3))]">
+                          <TableCell colSpan={5} className="py-8 text-center text-[hsl(var(--ink-3))]">
                             Nenhum nutricionista registrado
                           </TableCell>
                         </TableRow>
@@ -721,20 +1159,20 @@ export default function AdminSupremo() {
           </TabsContent>
           {/* Feedback */}
           <TabsContent value="feedback">
-            <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <Card className={cardSupreme}>
               <CardHeader className="pb-3">
-                <CardTitle className="font-display text-[hsl(150,10%,95%)] flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 font-display text-[hsl(var(--ink-1))]">
                   <Star className="h-5 w-5 text-[hsl(45,93%,47%)]" />
-                  Controle de Qualidade — Avaliações dos Clientes
+                  Controle de qualidade — avaliações
                 </CardTitle>
-                <p className="text-xs text-[hsl(150,10%,55%)]">
+                <p className="text-xs text-[hsl(var(--ink-3))]">
                   Monitore as notas (1 a 5 estrelas) e comentários para garantir a qualidade do atendimento dos nutricionistas.
                 </p>
               </CardHeader>
               <CardContent>
                 {feedbacks.length === 0 ? (
-                  <div className="text-center py-12 text-[hsl(150,10%,55%)]">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
+                  <div className="py-12 text-center text-[hsl(var(--ink-3))]">
+                    <MessageSquare className="mx-auto mb-4 h-12 w-12 opacity-30" />
                     <p className="text-sm">Nenhum feedback recebido ainda</p>
                   </div>
                 ) : (
@@ -748,15 +1186,15 @@ export default function AdminSupremo() {
                           className={`rounded-lg border p-4 ${
                             isNegative
                               ? "border-destructive/50 bg-destructive/10"
-                              : "border-[hsl(160,15%,15%)] bg-[hsl(160,20%,6%)]"
+                              : "border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))]"
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-2">
+                          <div className="mb-2 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className={`font-medium text-sm ${isNegative ? "text-destructive" : "text-[hsl(150,10%,90%)]"}`}>
+                              <span className={`text-sm font-medium ${isNegative ? "text-destructive" : "text-[hsl(var(--ink-1))]"}`}>
                                 {clientProfile?.full_name || "Cliente anônimo"}
                               </span>
-                              <span className="text-xs text-[hsl(150,10%,40%)]">
+                              <span className="text-xs text-[hsl(var(--ink-3))]">
                                 #{fb.diet_request_id?.slice(0, 8)}
                               </span>
                               {isNegative && (
@@ -770,29 +1208,31 @@ export default function AdminSupremo() {
                                 {[1, 2, 3, 4, 5].map((star) => (
                                   <Star
                                     key={star}
-                                    className={`h-4 w-4 ${star <= fb.rating ? "text-[hsl(45,93%,47%)] fill-[hsl(45,93%,47%)]" : "text-[hsl(160,15%,20%)]"}`}
+                                    className={`h-4 w-4 ${star <= fb.rating ? "text-[hsl(45,93%,47%)] fill-[hsl(45,93%,47%)]" : "text-[hsl(var(--surface-3))]"}`}
                                   />
                                 ))}
                               </div>
                               {isNegative && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
-                                  onClick={() => toast.info(`Iniciando contato com ${clientProfile?.full_name || "cliente"}...`)}
-                                >
-                                  <MessageSquare className="h-3 w-3" />
-                                  Entrar em Contato
-                                </Button>
+                                <div className={dangerActionWrap}>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1 border-destructive/40 text-xs text-destructive hover:bg-destructive/15"
+                                    onClick={() => toast.info(`Iniciando contato com ${clientProfile?.full_name || "cliente"}...`)}
+                                  >
+                                    <MessageSquare className="h-3 w-3" />
+                                    Entrar em contato
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>
                           {fb.comment && (
-                            <p className={`text-sm italic ${isNegative ? "text-destructive/80" : "text-[hsl(150,10%,55%)]"}`}>
+                            <p className={`text-sm italic ${isNegative ? "text-destructive/80" : "text-[hsl(var(--ink-2))]"}`}>
                               "{fb.comment}"
                             </p>
                           )}
-                          <p className="text-xs text-[hsl(150,10%,40%)] mt-2">
+                          <p className="mt-2 text-xs text-[hsl(var(--ink-3))]">
                             {new Date(fb.created_at).toLocaleDateString("pt-BR")}
                           </p>
                         </div>
@@ -806,24 +1246,24 @@ export default function AdminSupremo() {
 
           {/* Blog Triage */}
           <TabsContent value="blog-triage">
-            <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <Card className={cardSupreme}>
               <CardHeader className="pb-3">
-                <CardTitle className="font-display text-[hsl(150,10%,95%)] flex items-center gap-2">
+                <CardTitle className="flex flex-wrap items-center gap-2 font-display text-[hsl(var(--ink-1))]">
                   <BookOpen className="h-5 w-5 text-primary" />
-                  Revisão de Artigos
-                  <Badge variant="outline" className="border-primary/40 text-primary ml-2">
+                  Revisão de artigos
+                  <Badge variant="outline" className="ml-0 border-primary/40 text-primary sm:ml-2">
                     {pendingPosts.length} pendente{pendingPosts.length === 1 ? "" : "s"}
                   </Badge>
                 </CardTitle>
-                <p className="text-xs text-[hsl(150,10%,55%)] mt-1">
-                  Artigos enviados por Nutricionistas e Personal Trainers aguardando aprovação para publicação no blog público.
+                <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">
+                  Artigos enviados por nutricionistas e personals aguardando aprovação para publicação no blog público.
                 </p>
               </CardHeader>
               <CardContent>
                 {pendingPosts.length === 0 ? (
-                  <div className="text-center py-12">
-                    <CheckCircle2 className="h-10 w-10 text-primary/40 mx-auto mb-3" />
-                    <p className="text-[hsl(150,10%,55%)]">Nenhum artigo aguardando revisão.</p>
+                  <div className="py-12 text-center">
+                    <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-primary/40" />
+                    <p className="text-[hsl(var(--ink-3))]">Nenhum artigo aguardando revisão.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -832,62 +1272,67 @@ export default function AdminSupremo() {
                       return (
                         <div
                           key={post.id}
-                          className="rounded-lg border border-[hsl(160,15%,15%)] bg-[hsl(160,20%,6%)] p-4"
+                          className="rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-4"
                         >
-                          <div className="flex flex-col md:flex-row gap-4">
+                          <div className="flex flex-col gap-4 md:flex-row">
                             {post.cover_image_url && (
                               <img
                                 src={post.cover_image_url}
                                 alt={post.title}
-                                className="w-full md:w-32 h-24 object-cover rounded-md border border-[hsl(160,15%,15%)] flex-shrink-0"
+                                className="h-24 w-full shrink-0 rounded-md border border-[hsl(var(--surface-3))] object-cover md:w-32"
                               />
                             )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <Badge variant="outline" className="text-xs border-[hsl(160,15%,18%)] text-[hsl(150,10%,55%)]">
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex flex-wrap items-center gap-2">
+                                <Badge variant="outline" className="border-[hsl(var(--surface-3))] text-xs text-[hsl(var(--ink-2))]">
                                   {post.category}
                                 </Badge>
-                                <Badge variant="outline" className="text-xs border-[hsl(45,93%,47%)] text-[hsl(45,93%,47%)]">
+                                <Badge variant="outline" className="border-[hsl(45,93%,47%)] text-xs text-[hsl(45,93%,47%)]">
                                   ⏳ Pendente
                                 </Badge>
-                                <span className="text-xs text-[hsl(150,10%,40%)]">
+                                <span className="text-xs text-[hsl(var(--ink-3))]">
                                   {author?.full_name || "Autor desconhecido"}
                                   {author?.role && ` • ${author.role === "nutritionist" ? "Nutricionista" : author.role === "personal_trainer" ? "Personal" : author.role}`}
                                 </span>
-                                <span className="text-xs text-[hsl(150,10%,40%)]">
+                                <span className="text-xs text-[hsl(var(--ink-3))]">
                                   {new Date(post.created_at).toLocaleDateString("pt-BR")}
                                 </span>
                               </div>
-                              <h3 className="font-display font-bold text-[hsl(150,10%,95%)] mb-1">
+                              <h3 className="mb-1 font-display font-bold text-[hsl(var(--ink-1))]">
                                 {post.title}
                               </h3>
-                              <p className="text-sm text-[hsl(150,10%,55%)] line-clamp-2">
+                              <p className="line-clamp-2 text-sm text-[hsl(var(--ink-2))]">
                                 {post.excerpt || post.content.slice(0, 200)}
                               </p>
-                              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="gap-1 border-primary/40 text-primary hover:bg-primary/10"
                                   onClick={() => setViewPost(post)}
                                 >
-                                  <Eye className="h-3.5 w-3.5" /> Ler Artigo Completo
+                                  <Eye className="h-3.5 w-3.5" /> Ler artigo completo
                                 </Button>
                                 <Button
                                   size="sm"
-                                  className="emerald-gradient text-primary-foreground gap-1"
+                                  className="emerald-gradient gap-1 text-primary-foreground"
                                   onClick={() => approvePost(post.id)}
                                 >
-                                  <Check className="h-3.5 w-3.5" /> Aprovar e Publicar
+                                  <Check className="h-3.5 w-3.5" /> Aprovar e publicar
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10"
-                                  onClick={() => rejectPost(post.id)}
-                                >
-                                  <X className="h-3.5 w-3.5" /> Recusar
-                                </Button>
+                                <div className={dangerActionWrap}>
+                                  <p className="mb-2 font-mono text-[10px] font-medium uppercase tracking-wider text-red-300/80">
+                                    Ação destrutiva
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-red-500/50 bg-red-950/30 text-destructive hover:bg-red-950/50"
+                                    onClick={() => rejectPost(post.id)}
+                                  >
+                                    <X className="h-3.5 w-3.5" /> Recusar (excluir)
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -902,42 +1347,42 @@ export default function AdminSupremo() {
 
           {/* Plans & Clinic Logo Tab — Admin can preview tier features */}
           <TabsContent value="plans">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card className="bg-[hsl(160,20%,8%)] border-[hsl(160,15%,15%)]">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Card className={cardSupreme}>
                 <CardHeader>
-                  <CardTitle className="font-display text-[hsl(150,10%,95%)] flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 font-display text-[hsl(var(--ink-1))]">
                     <Crown className="h-5 w-5 text-primary" />
-                    Visualizar Planos da Plataforma
+                    Visualizar planos da plataforma
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-sm text-[hsl(150,10%,55%)]">
-                    Abra o modal de Planos exatamente como nutricionistas e personals veem.
+                  <p className="text-sm text-[hsl(var(--ink-2))]">
+                    Abra o modal de planos exatamente como nutricionistas e personals veem.
                   </p>
                   <Button
                     onClick={() => setPlansModalOpen(true)}
-                    className="emerald-gradient text-primary-foreground gap-2"
+                    className="emerald-gradient gap-2 text-primary-foreground"
                   >
-                    <Crown className="h-4 w-4" /> Abrir Modal de Planos
+                    <Crown className="h-4 w-4" /> Abrir modal de planos
                   </Button>
-                  <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-[hsl(160,15%,15%)]">
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-t border-[hsl(var(--surface-3))] pt-4">
                     <div className="text-center">
-                      <p className="text-xs text-[hsl(150,10%,55%)]">Basic</p>
-                      <p className="font-display font-bold text-[hsl(150,10%,95%)]">{profiles.filter(p => ((p as any).plan_tier || "basic") === "basic").length}</p>
+                      <p className="text-xs text-[hsl(var(--ink-3))]">Basic</p>
+                      <p className="font-display font-bold text-[hsl(var(--ink-1))]">{profiles.filter(p => ((p as any).plan_tier || "basic") === "basic").length}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-xs text-[hsl(150,10%,55%)]">Premium</p>
+                      <p className="text-xs text-[hsl(var(--ink-3))]">Premium</p>
                       <p className="font-display font-bold text-primary">{profiles.filter(p => (p as any).plan_tier === "premium").length}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-xs text-[hsl(150,10%,55%)]">Clínica</p>
+                      <p className="text-xs text-[hsl(var(--ink-3))]">Clínica</p>
                       <p className="font-display font-bold text-[hsl(var(--coin-gold))]">{profiles.filter(p => (p as any).plan_tier === "clinic").length}</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="[&>div]:bg-[hsl(160,20%,8%)] [&>div]:border-[hsl(160,15%,15%)] [&_*]:!text-[hsl(150,10%,90%)] [&_p.text-muted-foreground]:!text-[hsl(150,10%,55%)]">
+              <div className="dark [&>div]:card-clinical [&>div]:border-[hsl(var(--surface-3))] [&>div]:bg-[hsl(var(--surface-0))] [&_*]:!text-[hsl(var(--ink-1))] [&_p.text-muted-foreground]:!text-[hsl(var(--ink-2))]">
                 <ClinicLogoUpload />
               </div>
             </div>
@@ -957,11 +1402,11 @@ export default function AdminSupremo() {
 
       {/* PDF Full-Screen Modal */}
       <Dialog open={pdfOpen} onOpenChange={setPdfOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-card">
+        <DialogContent className="dark max-h-[90vh] max-w-4xl overflow-y-auto border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))]">
           <DialogHeader>
-            <DialogTitle className="font-display flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 font-display">
               <FileText className="h-5 w-5 text-primary" />
-              Visualização do Plano — #{pdfRequest?.id.slice(0, 8)}
+              Visualização do plano — #{pdfRequest?.id.slice(0, 8)}
             </DialogTitle>
           </DialogHeader>
           {pdfRequest?.ai_draft && (
@@ -977,9 +1422,9 @@ export default function AdminSupremo() {
 
       {/* Article Full-Read Modal */}
       <Dialog open={!!viewPost} onOpenChange={(o) => !o && setViewPost(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-card">
+        <DialogContent className="dark max-h-[90vh] max-w-3xl overflow-y-auto border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))]">
           <DialogHeader>
-            <DialogTitle className="font-display flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 font-display">
               <BookOpen className="h-5 w-5 text-primary" />
               {viewPost?.title}
             </DialogTitle>
@@ -987,27 +1432,44 @@ export default function AdminSupremo() {
           {viewPost && (
             <div className="space-y-4">
               {viewPost.cover_image_url && (
-                <img src={viewPost.cover_image_url} alt={viewPost.title} className="w-full max-h-72 object-cover rounded-lg border" />
+                <img src={viewPost.cover_image_url} alt={viewPost.title} className="max-h-72 w-full rounded-lg border border-[hsl(var(--surface-3))] object-cover" />
               )}
-              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                <Badge variant="outline">{viewPost.category}</Badge>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--ink-2))]">
+                <Badge variant="outline" className="border-[hsl(var(--surface-3))]">
+                  {viewPost.category}
+                </Badge>
                 <span>{new Date(viewPost.created_at).toLocaleDateString("pt-BR")}</span>
                 <span>•</span>
                 <span>{profiles.find((p) => p.user_id === viewPost.author_id)?.full_name || "Autor"}</span>
               </div>
               {viewPost.excerpt && (
-                <p className="text-sm italic text-muted-foreground border-l-2 border-primary/40 pl-3">{viewPost.excerpt}</p>
+                <p className="border-l-2 border-primary/40 pl-3 text-sm italic text-[hsl(var(--ink-2))]">{viewPost.excerpt}</p>
               )}
-              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-foreground">
+              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-[hsl(var(--ink-1))]">
                 {viewPost.content}
               </div>
-              <div className="flex gap-2 pt-4 border-t">
-                <Button className="emerald-gradient text-primary-foreground gap-1 flex-1" onClick={() => { approvePost(viewPost.id); setViewPost(null); }}>
-                  <Check className="h-4 w-4" /> Aprovar e Publicar
+              <div className="flex flex-col gap-3 border-t border-[hsl(var(--surface-3))] pt-4 sm:flex-row">
+                <Button
+                  className="emerald-gradient flex-1 gap-1 text-primary-foreground"
+                  onClick={() => {
+                    approvePost(viewPost.id);
+                    setViewPost(null);
+                  }}
+                >
+                  <Check className="h-4 w-4" /> Aprovar e publicar
                 </Button>
-                <Button variant="outline" className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 flex-1" onClick={() => { rejectPost(viewPost.id); setViewPost(null); }}>
-                  <X className="h-4 w-4" /> Recusar
-                </Button>
+                <div className={`${dangerActionWrap} flex-1 sm:max-w-[min(100%,12rem)]`}>
+                  <Button
+                    variant="outline"
+                    className="w-full gap-1 border-red-500/50 bg-red-950/30 text-destructive hover:bg-red-950/50"
+                    onClick={() => {
+                      rejectPost(viewPost.id);
+                      setViewPost(null);
+                    }}
+                  >
+                    <X className="h-4 w-4" /> Recusar (excluir)
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -1015,6 +1477,6 @@ export default function AdminSupremo() {
       </Dialog>
 
       <PlansModal open={plansModalOpen} onOpenChange={setPlansModalOpen} currentTier="clinic" />
-    </div>
+    </motion.div>
   );
 }

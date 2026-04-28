@@ -27,20 +27,20 @@ function decideRoute(profile: ProfileRow | null, user: User): string {
       const ok =
         !!profile.full_name?.trim() &&
         isCRNValid((profile.crn_number ?? "").trim());
-      return ok ? "/nutri-dashboard" : "/onboarding";
+      return ok ? "/inicio" : "/onboarding";
     }
-    if (profile.role === "personal_trainer") return "/personal-dashboard";
-    if (profile.role === "admin")            return "/admin";
-    return "/dashboard"; // client / qualquer outro role salvo
+    if (profile.role === "personal_trainer") return "/inicio";
+    if (profile.role === "admin")            return "/inicio";
+    return "/inicio";
   }
 
   // Sem perfil → respeita o que o usuário escolheu em /auth.
   const metaRole = (user.user_metadata?.role ?? "") as string;
   if (metaRole === "nutritionist")     return "/onboarding";
-  if (metaRole === "personal_trainer") return "/personal-dashboard";
-  if (metaRole === "client")           return "/dashboard";
+  if (metaRole === "personal_trainer") return "/inicio";
+  if (metaRole === "client")           return "/inicio";
 
-  return "/dashboard";
+  return "/inicio";
 }
 
 export default function AuthCallback() {

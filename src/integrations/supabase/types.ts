@@ -37,7 +37,9 @@ export type Database = {
       }
       blog_posts: {
         Row: {
+          author_display_name: string | null
           author_id: string
+          author_role_label: string | null
           category: string
           content: string
           cover_image_url: string | null
@@ -53,7 +55,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          author_display_name?: string | null
           author_id: string
+          author_role_label?: string | null
           category?: string
           content: string
           cover_image_url?: string | null
@@ -69,7 +73,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          author_display_name?: string | null
           author_id?: string
+          author_role_label?: string | null
           category?: string
           content?: string
           cover_image_url?: string | null
@@ -201,6 +207,7 @@ export type Database = {
           affiliate_code: string | null
           allergies: string | null
           approved: boolean
+          avatar_url: string | null
           birth_date: string | null
           clinic_logo_url: string | null
           created_at: string
@@ -221,6 +228,7 @@ export type Database = {
           affiliate_code?: string | null
           allergies?: string | null
           approved?: boolean
+          avatar_url?: string | null
           birth_date?: string | null
           clinic_logo_url?: string | null
           created_at?: string
@@ -241,6 +249,7 @@ export type Database = {
           affiliate_code?: string | null
           allergies?: string | null
           approved?: boolean
+          avatar_url?: string | null
           birth_date?: string | null
           clinic_logo_url?: string | null
           created_at?: string

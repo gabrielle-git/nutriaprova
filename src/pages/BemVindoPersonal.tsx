@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dumbbell, CheckCircle2, ArrowRight, Leaf, Wallet, Users, Share2 } from "lucide-react";
+import { Dumbbell, CheckCircle2, ArrowRight, Wallet, Users, Share2 } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
 
 // ── Helpers de animação ───────────────────────────────────────────────────────
 // Tipagem explícita como Variants resolve o erro de tipo do Framer Motion
@@ -49,18 +50,14 @@ export default function BemVindoPersonal() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 font-display font-bold text-lg">
-          <Leaf className="h-5 w-5 text-primary" />
-          nutr<span className="text-primary">IA</span>prova
-        </div>
-        <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-          Bem-vindo(a), Personal!
-        </Badge>
-      </header>
+      <AppHeader />
 
-      <main className="max-w-3xl mx-auto px-4 py-14">
+      <main className="mx-auto max-w-3xl px-4 py-8 md:py-12">
+        <div className="mb-6 flex justify-center">
+          <Badge variant="outline" className="border-primary/30 text-xs text-primary">
+            Bem-vindo(a), Personal!
+          </Badge>
+        </div>
         {/* Hero */}
         <motion.div
           className="text-center mb-12"
