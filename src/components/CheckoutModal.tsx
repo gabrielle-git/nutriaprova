@@ -15,7 +15,8 @@ interface CheckoutModalProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   amount?: number;
-  onApproved?: () => void;
+  /** Chamado após o fluxo de pagamento simulado; pode ser assíncrono para refetch no painel. */
+  onApproved?: () => void | Promise<void>;
   /** Quando definido, textos refletem assinatura de plano (ex.: /planos) em vez do fluxo cardápio. */
   planLabel?: string | null;
 }
@@ -100,14 +101,19 @@ export default function CheckoutModal({
       }
     }
     setTimeout(() => {
-      setProcessing(false);
-      toast.success(
-        isSubscription
-          ? `Pagamento aprovado! Plano ${planLabel} será ativado em instantes.`
-          : "Pagamento aprovado! Sua dieta entrou em processamento.",
-      );
-      onApproved?.();
-      onOpenChange(false);
+      void (async () => {
+        setProcessing(false);
+        try {
+          await onApproved?.();
+          toast.success(
+            isSubscription
+              ? `Pagamento aprovado! Plano ${planLabel} será ativado em instantes.`
+              : "Pagamento aprovado! Sua dieta entrou em processamento.",
+          );
+        } finally {
+          onOpenChange(false);
+        }
+      })();
     }, 1200);
   };
 

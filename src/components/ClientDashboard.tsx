@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AnimatePresence,
@@ -416,6 +416,52 @@ export default function ClientDashboard() {
       ? current.plan.totalCalories
       : null;
 
+  const refreshCurrentPlan = useCallback(async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("diet_requests")
+      .select("id, status, ai_draft, created_at")
+      .eq("client_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[ClientDashboard] diet_requests fetch error:", error.message);
+      setCurrent({ status: "empty" });
+      return;
+    }
+
+    const row = data as unknown as
+      | {
+          status:
+            | "awaiting_payment"
+            | "processing"
+            | "pending"
+            | "awaiting_validation"
+            | "in_review"
+            | "completed";
+          ai_draft: DietPlan | null;
+        }
+      | null;
+
+    if (!row) {
+      setCurrent({ status: "empty" });
+      if (profile?.role === "client") {
+        navigate("/questionnaire", { replace: true });
+      }
+      return;
+    }
+
+    setCurrent({
+      status: "ready",
+      plan: row.ai_draft ?? null,
+      requestStatus: row.status,
+      isCompleted: row.status === "completed",
+    });
+  }, [user, navigate, profile?.role]);
+
   // ── Fetch do plano atual (apenas LEITURA — não toca no fluxo de IA) ───────
   useEffect(() => {
     if (!user) return;
@@ -442,56 +488,12 @@ export default function ClientDashboard() {
       setEngagementPoints(32 + n * 48);
     };
 
-    const fetchCurrent = async () => {
-      const { data, error } = await supabase
-        .from("diet_requests")
-        .select("id, status, ai_draft, created_at")
-        .eq("client_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (error) {
-        console.warn("[ClientDashboard] diet_requests fetch error:", error.message);
-        setCurrent({ status: "empty" });
-        return;
-      }
-
-      // O nutricionista atualiza o próprio `ai_draft` quando aprova/ajusta;
-      // portanto ele representa tanto o rascunho quanto a versão final.
-      const row = data as unknown as
-        | {
-            status:
-              | "awaiting_payment"
-              | "processing"
-              | "pending"
-              | "awaiting_validation"
-              | "in_review"
-              | "completed";
-            ai_draft: DietPlan | null;
-          }
-        | null;
-
-      if (!row) {
-        setCurrent({ status: "empty" });
-        if (profile?.role === "client") {
-          navigate("/questionnaire", { replace: true });
-        }
-        return;
-      }
-
-      setCurrent({
-        status: "ready",
-        plan: row.ai_draft ?? null,
-        requestStatus: row.status,
-        isCompleted: row.status === "completed",
-      });
+    const load = async () => {
+      await refreshCurrentPlan();
+      if (!cancelled) await refreshEngagement();
     };
 
-    void fetchCurrent();
-    void refreshEngagement();
+    void load();
 
     const channel = supabase
       .channel(`client-dashboard-${user.id}`)
@@ -504,7 +506,7 @@ export default function ClientDashboard() {
           filter: `client_id=eq.${user.id}`,
         },
         () => {
-          void fetchCurrent();
+          void refreshCurrentPlan();
           void refreshEngagement();
         },
       )
@@ -514,7 +516,7 @@ export default function ClientDashboard() {
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [user, navigate, profile?.role]);
+  }, [user, refreshCurrentPlan]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -875,7 +877,11 @@ export default function ClientDashboard() {
                 (isNutri ? (
                   <NutriSubscriptionTab />
                 ) : (
-                  <CurrentPlanTab state={current} hasCompletedPlans={hasCompletedPlans} />
+                  <CurrentPlanTab
+                    state={current}
+                    hasCompletedPlans={hasCompletedPlans}
+                    onRefreshPlan={refreshCurrentPlan}
+                  />
                 ))}
               {tab === "history" && <HistoryTab />}
               {tab === "settings" && (
@@ -979,9 +985,12 @@ function NutriSubscriptionTab() {
 function CurrentPlanTab({
   state,
   hasCompletedPlans,
+  onRefreshPlan,
 }: {
   state: CurrentPlanState;
   hasCompletedPlans: boolean;
+  /** Re-lê `diet_requests` após pagamento (Realtime nem sempre dispara em dev). */
+  onRefreshPlan: () => Promise<void>;
 }) {
   const [paymentOpen, setPaymentOpen] = useState(false);
 
@@ -1073,8 +1082,8 @@ function CurrentPlanTab({
             open={paymentOpen}
             onOpenChange={setPaymentOpen}
             amount={39.9}
-            onApproved={() => {
-              toast.success("Pagamento aprovado! Agora estamos processando seu plano.");
+            onApproved={async () => {
+              await onRefreshPlan();
             }}
           />
         </>

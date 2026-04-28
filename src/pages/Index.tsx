@@ -1,6 +1,6 @@
-import { useEffect, useLayoutEffect } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import LandingHero, { LandingHomeContinued } from "@/components/LandingHero";
+import LandingHero from "@/components/LandingHero";
 import { clearPendingSignup } from "@/lib/pendingSignup";
 import { useAuth } from "@/hooks/useAuth";
 import { isCRNValid } from "@/lib/masks";
@@ -24,6 +24,10 @@ function dashboardPathFor(
   if (role === "client") return "/inicio";
   return null;
 }
+
+const LandingHomeContinued = lazy(() =>
+  import("@/components/LandingHomeContinued").then((m) => ({ default: m.LandingHomeContinued })),
+);
 
 export default function Index() {
   const navigate = useNavigate();
@@ -60,7 +64,17 @@ export default function Index() {
   return (
     <div className="bg-background overflow-x-hidden">
       <LandingHero />
-      <LandingHomeContinued />
+      <Suspense
+        fallback={
+          <div
+            className="min-h-[40vh] border-t border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))]"
+            aria-busy
+            aria-label="Carregando conteúdo"
+          />
+        }
+      >
+        <LandingHomeContinued />
+      </Suspense>
     </div>
   );
 }

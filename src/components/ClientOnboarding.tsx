@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -41,10 +41,12 @@ const ALLERGY_OPTIONS = [
 
 const STEPS = ["Dados Básicos", "Objetivos", "Restrições", "Gerando..."];
 
-type ClientOnboardingForm = Omit<ClientData, "gender" | "weight" | "height"> & {
+type ClientOnboardingForm = Omit<ClientData, "gender" | "weight" | "height" | "bodyFat"> & {
   gender: ClientData["gender"] | "";
   weight: number | "";
   height: number | "";
+  /** Opcional — mesmo campo que `profiles.client_data.bodyFat` */
+  bodyFat: number | "";
   targetWeight: number | "";
   targetTimelineMonths: number | "";
 };
@@ -55,6 +57,7 @@ const EMPTY_FORM: ClientOnboardingForm = {
   gender: "",
   weight: "",
   height: "",
+  bodyFat: "",
   goal: "",
   allergies: [],
   activityLevel: "moderate",
@@ -78,6 +81,14 @@ const coerceNumber = (value: unknown): number | "" => {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return "";
+};
+
+/** % de gordura corporal opcional (1–100). Valores inválidos viram campo vazio. */
+const coerceOptionalBodyFatPercent = (value: unknown): number | "" => {
+  if (value === null || value === undefined || value === "") return "";
+  const n = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0 || n > 100) return "";
+  return Math.round(n * 10) / 10;
 };
 
 const parseGoalValues = (goal: unknown): string[] => {
@@ -106,12 +117,15 @@ const mergeClientData = (
     additionalNotes: read("additionalNotes"),
     targetWeight: read("targetWeight"),
     targetTimelineMonths: read("targetTimelineMonths"),
+    bodyFat: read("bodyFat"),
   };
 };
 
 export default function ClientOnboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  /** Impede segunda execução do pipeline n8n (double-click, reentrância). Nunca usar useEffect para chamar o webhook. */
+  const n8nGenerateLockedRef = useRef(false);
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [dietPlan, setDietPlan] = useState<DietPlan | null>(null);
@@ -119,7 +133,7 @@ export default function ClientOnboarding() {
   const [dietRequestId, setDietRequestId] = useState<string | null>(null);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   // Observação: `gender` começa vazio e é narrowed para
-  // "masculino" | "feminino" apenas após validação (ver guard em handleGenerate).
+  // "masculino" | "feminino" apenas após validação (ver guard em handleGeneratePlanButtonClick).
   const [formData, setFormData] = useState<ClientOnboardingForm>(EMPTY_FORM);
 
   const calculateAge = (dateStr: string) => {
@@ -131,6 +145,7 @@ export default function ClientOnboarding() {
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     return age;
   };
+  // Somente hidrata formulário a partir do Supabase. Não disparar generateDietPlan / webhook n8n aqui.
   useEffect(() => {
     if (!user) return;
 
@@ -183,6 +198,7 @@ export default function ClientOnboarding() {
             : "",
         weight: coerceNumber(hydrated.weight),
         height: coerceNumber(hydrated.height),
+        bodyFat: coerceOptionalBodyFatPercent(hydrated.bodyFat),
         goal: goals.join(", "),
         allergies,
         activityLevel:
@@ -237,6 +253,9 @@ export default function ClientOnboarding() {
             ...(weight !== undefined ? { weight } : {}),
             ...(height !== undefined ? { height } : {}),
             ...(formData.gender ? { gender: formData.gender } : {}),
+            ...(formData.bodyFat !== "" && Number.isFinite(Number(formData.bodyFat))
+              ? { bodyFat: Number(formData.bodyFat) }
+              : {}),
             activityLevel: formData.activityLevel,
           },
         })
@@ -263,9 +282,15 @@ export default function ClientOnboarding() {
     });
   };
 
-  const handleGenerate = async () => {
+  /** Único ponto de entrada para POST ao webhook de geração — apenas no clique em "Gerar Meu Plano". */
+  const handleGeneratePlanButtonClick = async () => {
     if (!user) {
       toast.error("Sessão expirada. Faça login novamente para gerar seu plano.");
+      return;
+    }
+
+    if (n8nGenerateLockedRef.current) {
+      toast.message("Já estamos gerando seu plano…");
       return;
     }
 
@@ -292,6 +317,7 @@ export default function ClientOnboarding() {
       }
     }
 
+    n8nGenerateLockedRef.current = true;
     setStep(3);
     setGenerating(true);
     // Narrow do gender: já validado pelo guard acima, portanto podemos afirmar
@@ -302,6 +328,12 @@ export default function ClientOnboarding() {
       gender: formData.gender as "masculino" | "feminino",
       weight: Number(formData.weight),
       height: Number(formData.height),
+      ...(formData.bodyFat !== "" &&
+      Number.isFinite(Number(formData.bodyFat)) &&
+      Number(formData.bodyFat) > 0 &&
+      Number(formData.bodyFat) <= 100
+        ? { bodyFat: Number(formData.bodyFat) }
+        : {}),
       goal: selectedGoals.join(", "),
       allergies: formData.allergies,
       activityLevel: formData.activityLevel,
@@ -328,7 +360,7 @@ export default function ClientOnboarding() {
         .single();
 
       if (createError || !createdRequest?.id) {
-        console.error("[handleGenerate] create diet_request falhou:", createError);
+        console.error("[ClientOnboarding] create diet_request falhou:", createError);
         toast.error("Não foi possível iniciar seu plano. Tente novamente.");
         setStep(2);
         return;
@@ -345,7 +377,7 @@ export default function ClientOnboarding() {
       } catch (aiError: any) {
         // Mensagem técnica (ex: "Failed to fetch") permanece apenas no console
         // para debug — o usuário final vê sempre um texto amigável e estável.
-        console.error("[handleGenerate] n8nService falhou:", aiError);
+        console.error("[ClientOnboarding] n8nService falhou:", aiError);
         toast.error(
           "Sistema indisponível: Não foi possível gerar o plano no momento. Tente novamente.",
         );
@@ -377,7 +409,7 @@ export default function ClientOnboarding() {
           .eq("id", requestId);
 
         if (updateRequestError) {
-          console.error("[handleGenerate] diet_requests update error:", updateRequestError);
+          console.error("[ClientOnboarding] diet_requests update error:", updateRequestError);
           toast.error("Plano gerado, mas houve erro ao salvar. Tente novamente.");
         }
 
@@ -398,7 +430,7 @@ export default function ClientOnboarding() {
         }
         toast.success("Plano gerado! Desbloqueie para continuar.");
       } catch (dbError: any) {
-        console.error("[handleGenerate] Supabase falhou:", dbError);
+        console.error("[ClientOnboarding] Supabase falhou:", dbError);
         toast.error("Plano gerado, mas não conseguimos salvar. Tente novamente.");
       }
 
@@ -407,12 +439,13 @@ export default function ClientOnboarding() {
       // Safety net — qualquer erro inesperado cai aqui e vira toast vermelho
       // em vez de quebrar a tela inteira. Nunca vazamos a mensagem crua do
       // browser/JS para o usuário final (evita textos como "Failed to fetch").
-      console.error("[handleGenerate] erro inesperado:", err);
+      console.error("[ClientOnboarding] erro inesperado:", err);
       toast.error(
         "Sistema indisponível: Não foi possível gerar o plano no momento. Tente novamente.",
       );
       setStep(2);
     } finally {
+      n8nGenerateLockedRef.current = false;
       setGenerating(false);
     }
   };
@@ -523,6 +556,32 @@ export default function ClientOnboarding() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label htmlFor="bodyFat">
+                      Percentual de gordura corporal (%)
+                      <span className="text-muted-foreground font-normal"> (opcional)</span>
+                    </Label>
+                    <Input
+                      id="bodyFat"
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={0.1}
+                      placeholder="Ex.: 22"
+                      className="mt-1"
+                      value={formData.bodyFat === "" ? "" : formData.bodyFat}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          bodyFat: e.target.value === "" ? "" : +e.target.value,
+                        })
+                      }
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Bioimpedância ou adipômetro — refine o plano se você souber o valor.
+                    </p>
+                  </div>
+
                   {/* Gênero — obrigatório para o cálculo calórico basal (TMB)
                       da IA. Fator Mifflin-St Jeor difere em ~166 kcal/dia entre sexos. */}
                   <div>
@@ -537,8 +596,8 @@ export default function ClientOnboarding() {
                         const selected = formData.gender === opt.value;
                         return (
                           <button
-                            key={opt.value}
                             type="button"
+                            key={opt.value}
                             onClick={() => setFormData({ ...formData, gender: opt.value })}
                             className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
                               selected
@@ -575,6 +634,7 @@ export default function ClientOnboarding() {
                   </Select>
                 </div>
                 <Button
+                  type="button"
                   onClick={() => {
                     void (async () => {
                       if (!canProceed()) return;
@@ -603,6 +663,7 @@ export default function ClientOnboarding() {
                 <div className="grid grid-cols-2 gap-3">
                   {GOAL_OPTIONS.map((goal) => (
                     <button
+                      type="button"
                       key={goal.value}
                       onClick={() => toggleGoal(goal.value)}
                       className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left ${
@@ -620,10 +681,10 @@ export default function ClientOnboarding() {
                   ))}
                 </div>
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setStep(0)} className="flex-1">
+                  <Button type="button" variant="outline" onClick={() => setStep(0)} className="flex-1">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                   </Button>
-                  <Button onClick={() => setStep(2)} disabled={!canProceed()} className="flex-1">
+                  <Button type="button" onClick={() => setStep(2)} disabled={!canProceed()} className="flex-1">
                     Próximo <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
@@ -684,6 +745,7 @@ export default function ClientOnboarding() {
                 <div className="grid grid-cols-2 gap-3">
                   {ALLERGY_OPTIONS.map((allergy) => (
                     <button
+                      type="button"
                       key={allergy.value}
                       onClick={() => toggleAllergy(allergy.label)}
                       className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
@@ -712,10 +774,14 @@ export default function ClientOnboarding() {
                   />
                 </div>
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
+                  <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Voltar
                   </Button>
-                  <Button onClick={handleGenerate} className="flex-1 emerald-gradient text-primary-foreground">
+                  <Button
+                    type="button"
+                    onClick={() => void handleGeneratePlanButtonClick()}
+                    className="flex-1 emerald-gradient text-primary-foreground"
+                  >
                     <Sparkles className="mr-2 h-4 w-4" /> Gerar Meu Plano
                   </Button>
                 </div>
@@ -770,6 +836,7 @@ export default function ClientOnboarding() {
                        <p className="font-display font-semibold text-lg mb-1">Seu plano de alta performance está pronto e guardado.</p>
                        <p className="text-sm text-muted-foreground mb-4">Desbloqueie agora para começar sua transformação.</p>
                        <Button
+                         type="button"
                          onClick={() => setCheckoutOpen(true)}
                          className="emerald-gradient text-primary-foreground text-base px-6 py-3 h-auto"
                        >

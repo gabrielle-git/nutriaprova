@@ -12,9 +12,7 @@ import { Button } from "@/components/ui/button";
 import {
   Leaf,
   ArrowRight,
-  Shield,
   Sparkles,
-  Star,
   HeartPulse,
   Apple,
   Sun,
@@ -26,9 +24,9 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
-import BiotipoSimulator from "./BiotipoSimulator";
-import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
+
+const BiotipoSimulatorLazy = lazy(() => import("./BiotipoSimulator"));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Contador animado
@@ -91,7 +89,7 @@ function Counter({ target, suffix = "" }: { target: number; suffix?: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Partículas flutuantes
 // ─────────────────────────────────────────────────────────────────────────────
-const PARTICLES = Array.from({ length: 7 }, (_, i) => ({
+const PARTICLES = Array.from({ length: 4 }, (_, i) => ({
   id: i,
   size: 6 + (i % 3) * 3,
   x: 3 + ((i * 31 + 7) % 94),
@@ -100,7 +98,7 @@ const PARTICLES = Array.from({ length: 7 }, (_, i) => ({
   drift: -10 + (i % 7) * 3,
 }));
 
-const GHOST_PARTICLES = Array.from({ length: 3 }, (_, i) => ({
+const GHOST_PARTICLES = Array.from({ length: 2 }, (_, i) => ({
   id: `ghost-${i}`,
   size: 16 + (i % 3) * 4,
   left: `${5 + ((i * 13) % 88)}%`,
@@ -223,205 +221,12 @@ const SOCIAL_PROOF_BADGES = [
   "Acompanhamento Real",
 ] as const;
 
-const BIOTIPO_CARDS = [
-  { title: "Ectomorfo", desc: "Metabolismo acelerado, dificuldade em ganhar massa. Foco em superávit e densidade calórica.", icon: Moon },
-  { title: "Mesomorfo", desc: "Ponto equilibrado — boa resposta a treino e dieta, facilidade para recomposição.", icon: Dumbbell },
-  { title: "Endomorfo", desc: "Tendência a reservar gordura. Estratégia em déficit calórico e saciedade controlada.", icon: Apple },
-] as const;
-
 const titleWords = "Sua nutrição personalizada com IA".split(" ");
 
 const subtitleLines = [
   "Receba um plano alimentar criado por inteligência artificial e validado por nutricionistas registrados no CRN",
   "— em menos de 24 horas.",
 ];
-
-function BioTiltCard({
-  b,
-  index,
-}: {
-  b: (typeof BIOTIPO_CARDS)[number];
-  index: number;
-}) {
-  const [tilt, setTilt] = useState({ x: 0, y: 0 });
-  const Icon = b.icon;
-
-  return (
-    <motion.div
-      className="card-clinical card-scan overflow-hidden p-5 text-left"
-      style={
-        {
-          "--scan-delay": `${index * 1.3}s`,
-          rotateX: tilt.x,
-          rotateY: tilt.y,
-          transformStyle: "preserve-3d",
-          transformPerspective: 1000,
-        } as CSSProperties
-      }
-      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      onMouseMove={(e) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const x = ((e.clientY - rect.top) / rect.height - 0.5) * -16;
-        const y = ((e.clientX - rect.left) / rect.width - 0.5) * 16;
-        setTilt({ x, y });
-      }}
-      onMouseLeave={() => setTilt({ x: 0, y: 0 })}
-    >
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[hsl(var(--surface-2))]">
-        <Icon className="icon-glow h-5 w-5 text-primary" />
-      </div>
-      <h3 className="mb-1.5 font-display text-sm font-semibold text-[hsl(var(--ink-1))]">{b.title}</h3>
-      <p className="text-xs leading-relaxed text-[hsl(var(--ink-2))]">{b.desc}</p>
-    </motion.div>
-  );
-}
-
-function spotlightMouseMove(e: MouseEvent<HTMLElement>) {
-  const rect = e.currentTarget.getBoundingClientRect();
-  e.currentTarget.style.setProperty("--mouse-x", `${e.clientX - rect.left}px`);
-  e.currentTarget.style.setProperty("--mouse-y", `${e.clientY - rect.top}px`);
-}
-
-/** Conteúdo abaixo do dobra: biótipos, depoimentos, features, CTA e rodapé (usado em Index). */
-export function LandingHomeContinued() {
-  const navigate = useNavigate();
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-
-  return (
-    <>
-      <section className="relative overflow-hidden border-b border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-16 md:px-6">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-0 h-40 w-[min(700px,100%)] -translate-x-1/2 rounded-full bg-primary/5 blur-[50px] md:h-48" />
-        </div>
-        <div className="relative z-10 mx-auto max-w-5xl">
-          <div className="mb-10 text-center md:mb-12">
-            <h2 className="mb-3 font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">
-              Simule seu <span className="text-gradient-emerald">biótipo</span>
-            </h2>
-            <p className="text-[0.95rem] leading-relaxed text-[hsl(var(--ink-2))] md:text-base">
-              Descubra seu perfil metabólico antes mesmo de começar — cada corpo reage de um jeito, e o nutrIAprova ajusta por perfil, não por fórmula genérica.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {BIOTIPO_CARDS.map((b, i) => (
-              <BioTiltCard key={b.title} b={b} index={i} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-4 py-16 md:px-6">
-        <div className="mx-auto max-w-5xl text-center">
-          <h2 className="mb-10 font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">
-            Quem já usa o <span className="text-gradient-emerald">nutrIAprova</span>
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-            {[
-              { name: "Mariana S.", text: "Perdi 8 kg em 3 meses. O nutricionista ajustou tudo para minha rotina real!", role: "Paciente" },
-              { name: "Dr. Carlos N.", text: "Aumento de 40% na minha receita mensal validando planos. A IA economiza horas.", role: "Nutricionista CRN-3" },
-              { name: "Felipe A.", text: "Já indiquei 12 alunos e recebi R$ 120 de comissão. Produto fácil de vender!", role: "Personal Trainer" },
-            ].map((t, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 40, rotateX: -8 }}
-                whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ delay: i * 0.12, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                className="card-clinical hover-glow p-6 text-left"
-                style={{ transformPerspective: 1000 }}
-              >
-                <div className="mb-3 flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, s) => (
-                    <Star key={s} className="h-4 w-4 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-                <p className="mb-4 text-sm text-[hsl(var(--ink-2))]">"{t.text}"</p>
-                <div>
-                  <p className="text-sm font-semibold text-[hsl(var(--ink-1))]">{t.name}</p>
-                  <p className="text-xs text-[hsl(var(--ink-3))]">{t.role}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="border-y border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-16 md:px-6">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-10 text-center font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">
-            Por que o <span className="text-gradient-emerald">nutrIAprova</span>?
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-            {[
-              { icon: Sparkles, title: "IA de ponta", desc: "Planos alimentares gerados por modelos treinados em milhares de protocolos nutricionais." },
-              { icon: Shield, title: "Validação profissional", desc: "Cada dieta é revisada e assinada por um nutricionista registrado no CRN antes de chegar até você." },
-              { icon: Dumbbell, title: "Rede de Personals", desc: "Personal trainers cadastrados indicam clientes e acompanham a evolução dos seus alunos." },
-            ].map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className="card-clinical flex flex-col items-center p-6 text-center"
-                >
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--surface-2))]">
-                    <Icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <h3 className="mb-2 font-sans text-base font-semibold text-[hsl(var(--ink-1))]">{f.title}</h3>
-                  <p className="text-sm font-normal leading-relaxed text-[hsl(var(--ink-2))]">{f.desc}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section
-        className="spotlight relative overflow-hidden px-4 py-20 text-center md:px-6"
-        onMouseMove={spotlightMouseMove}
-      >
-        <div className="pointer-events-none absolute inset-0">
-          <motion.div
-            className="absolute left-1/2 top-1/2 h-[min(400px,80vw)] w-[min(700px,95vw)] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[100px]"
-            style={{ backgroundColor: isDark ? "rgba(52,211,153,0.14)" : "rgba(16,185,129,0.22)" }}
-            animate={{ scale: [1, 1.1, 1], opacity: [0.7, 1, 0.7] }}
-            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-          />
-        </div>
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative z-10 mx-auto max-w-2xl"
-        >
-          <h2 className="mb-4 font-display text-3xl font-bold text-[hsl(var(--ink-1))] md:text-4xl">
-            Comece hoje por <span className="text-gradient-emerald">R$ 39,90</span>
-          </h2>
-          <p className="mb-8 text-[hsl(var(--ink-2))]">
-            Dieta personalizada + validação de nutricionista + suporte 24h. Cancele quando quiser.
-          </p>
-          <Button
-            size="lg"
-            className="btn-primary h-14 gap-2 px-10 text-lg"
-            onClick={() => navigate(CLIENT_AUTH_PATH)}
-          >
-            Quero Minha Dieta Agora
-            <ArrowRight className="h-5 w-5" />
-          </Button>
-        </motion.div>
-      </section>
-
-      <footer className="border-t border-[hsl(var(--surface-3))] px-4 py-6 text-center text-xs text-[hsl(var(--ink-3))] md:px-6">
-        © {new Date().getFullYear()} nutrIAprova — Dados protegidos conforme LGPD
-      </footer>
-    </>
-  );
-}
 
 /** Cabeçalho + hero (rota Index — duas colunas no desktop, simulador no hero). */
 export default function LandingHero() {
@@ -440,6 +245,19 @@ export default function LandingHero() {
 
   const isDark = resolvedTheme === "dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
+
+  /** Atrasa blobs/partículas para depois do 1º frame — menos trabalho na abertura. */
+  const [heroFxReady, setHeroFxReady] = useState(false);
+  useEffect(() => {
+    let id2 = 0;
+    const id = window.requestAnimationFrame(() => {
+      id2 = window.requestAnimationFrame(() => setHeroFxReady(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(id);
+      window.cancelAnimationFrame(id2);
+    };
+  }, []);
 
   const fadeUp: Variants = {
     hidden: { opacity: 0, y: 20 },
@@ -462,91 +280,95 @@ export default function LandingHero() {
         }}
       />
 
-      <motion.header
-        initial={{ y: -60, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.45 }}
-        className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-[hsl(var(--surface-3)/0.8)] bg-[hsl(var(--surface-0)/0.92)] px-4 shadow-[0_1px_0_hsl(var(--primary)/0.06),0_4px_24px_hsl(var(--ink-1)/0.04)] backdrop-blur-xl backdrop-saturate-150 md:px-6"
-      >
-        <div
-          className="flex cursor-pointer select-none items-center gap-2"
-          onClick={() => navigate("/")}
-        >
-          <Leaf className="h-6 w-6 text-primary" />
-          <span className="font-display text-lg font-bold tracking-[-0.02em] md:text-xl">
-            nutr<span className="text-primary">IA</span>prova
-          </span>
-        </div>
-
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-[hsl(var(--surface-3))] hover:bg-[hsl(var(--surface-2))]" onClick={toggleTheme}>
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-
-          <Button variant="ghost" className="hidden h-9 gap-1.5 rounded-full sm:inline-flex" onClick={() => navigate("/blog")}>
-            <BookOpen className="h-4 w-4" />
-            Blog
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Blog"
-            className="h-9 w-9 rounded-full border border-[hsl(var(--surface-3))] sm:hidden"
-            onClick={() => navigate("/blog")}
-          >
-            <BookOpen className="h-4 w-4" />
-          </Button>
-
-          {user ? (
-            <Button
-              variant="outline"
-              className="h-9 gap-1.5 rounded-lg border-[hsl(var(--surface-3))]"
-              onClick={async () => {
-                await signOut();
-                navigate("/", { replace: true });
-              }}
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </Button>
-          ) : (
-            <Button variant="outline" className="h-9 rounded-lg border-[hsl(var(--surface-3))]" onClick={() => navigate("/auth")}>
-              Entrar
-            </Button>
-          )}
-
-          <Button className="btn-primary h-9 px-4" onClick={() => navigate(CLIENT_AUTH_PATH)}>
-            Começar
-          </Button>
-        </div>
-      </motion.header>
-
       <motion.section
         ref={heroRef}
         initial={{ opacity: 0, scale: 0.92, filter: "blur(16px)" }}
         animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
         transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1] }}
-        className="noise relative min-h-[100svh] overflow-hidden bg-hero px-4 py-10 md:px-6 md:py-14"
+        className="noise relative min-h-[100svh] overflow-hidden bg-hero px-4 pb-10 pt-0 md:px-6 md:pb-14"
       >
         <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" />
-        <motion.div
-          className="pointer-events-none absolute -left-32 -top-32 h-[600px] w-[600px] rounded-full"
-          style={{ background: "radial-gradient(circle, hsl(158 72% 32% / 0.20) 0%, transparent 65%)" }}
-          animate={{ scale: [1, 1.2, 1], x: [0, 30, 0], y: [0, -20, 0] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="pointer-events-none absolute -right-20 top-1/3 h-[400px] w-[400px] rounded-full"
-          style={{ background: "radial-gradient(circle, hsl(172 60% 38% / 0.15) 0%, transparent 65%)" }}
-          animate={{ scale: [1, 1.15, 1], x: [0, -20, 0] }}
-          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 3 }}
-        />
-        <RadialBlobs isDark={isDark} />
-        <Particles isDark={isDark} />
+        {heroFxReady ? (
+          <>
+            <motion.div
+              className="pointer-events-none absolute -left-32 -top-32 h-[600px] w-[600px] rounded-full"
+              style={{ background: "radial-gradient(circle, hsl(158 72% 32% / 0.20) 0%, transparent 65%)" }}
+              animate={{ scale: [1, 1.2, 1], x: [0, 30, 0], y: [0, -20, 0] }}
+              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div
+              className="pointer-events-none absolute -right-20 top-1/3 h-[400px] w-[400px] rounded-full"
+              style={{ background: "radial-gradient(circle, hsl(172 60% 38% / 0.15) 0%, transparent 65%)" }}
+              animate={{ scale: [1, 1.15, 1], x: [0, -20, 0] }}
+              transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 3 }}
+            />
+            <RadialBlobs isDark={isDark} />
+            <Particles isDark={isDark} />
+          </>
+        ) : null}
+
+        <motion.header
+          initial={{ y: -60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.45 }}
+          className="sticky top-0 z-50 flex h-16 items-center justify-between bg-transparent px-0 md:px-0"
+        >
+          <div
+            className="flex cursor-pointer select-none items-center gap-2"
+            onClick={() => navigate("/")}
+          >
+            <Leaf className="h-6 w-6 text-primary" />
+            <span className="font-display text-lg font-bold tracking-[-0.02em] md:text-xl">
+              nutr<span className="text-primary">IA</span>prova
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-[hsl(var(--surface-3))] hover:bg-[hsl(var(--surface-2))]" onClick={toggleTheme}>
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+
+            <Button variant="ghost" className="hidden h-9 gap-1.5 rounded-full sm:inline-flex" onClick={() => navigate("/blog")}>
+              <BookOpen className="h-4 w-4" />
+              Blog
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Blog"
+              className="h-9 w-9 rounded-full border border-[hsl(var(--surface-3))] sm:hidden"
+              onClick={() => navigate("/blog")}
+            >
+              <BookOpen className="h-4 w-4" />
+            </Button>
+
+            {user ? (
+              <Button
+                variant="outline"
+                className="h-9 gap-1.5 rounded-lg border-[hsl(var(--surface-3))]"
+                onClick={async () => {
+                  await signOut();
+                  navigate("/", { replace: true });
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </Button>
+            ) : (
+              <Button variant="outline" className="h-9 rounded-lg border-[hsl(var(--surface-3))]" onClick={() => navigate("/auth")}>
+                Entrar
+              </Button>
+            )}
+
+            <Button className="btn-primary h-9 px-4" onClick={() => navigate(CLIENT_AUTH_PATH)}>
+              Começar
+            </Button>
+          </div>
+        </motion.header>
 
         <motion.div
           style={{ y: heroY, opacity: heroOpacity }}
-          className="relative z-10 mx-auto flex w-full max-w-7xl flex-col items-stretch justify-center gap-10 lg:min-h-0 lg:flex-row lg:items-center lg:gap-12 xl:gap-16"
+          className="relative z-10 mx-auto flex w-full max-w-7xl flex-col items-stretch justify-center gap-10 pt-6 md:pt-10 lg:min-h-0 lg:flex-row lg:items-center lg:gap-12 xl:gap-16"
         >
           <div className="max-w-2xl flex-1 text-center max-lg:mx-auto lg:max-w-none lg:px-0 lg:text-left">
             <motion.div
@@ -693,7 +515,19 @@ export default function LandingHero() {
             className="w-full min-w-0 max-w-2xl flex-1 max-lg:mx-auto lg:max-w-none"
           >
             <div className="card-clinical p-3 shadow-xl sm:p-4">
-              <BiotipoSimulator />
+              <Suspense
+                fallback={
+                  <div
+                    className="flex min-h-[420px] w-full items-center justify-center rounded-xl border border-dashed border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))/0.35]"
+                    aria-busy
+                    aria-label="Carregando simulador"
+                  >
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  </div>
+                }
+              >
+                <BiotipoSimulatorLazy />
+              </Suspense>
             </div>
           </motion.div>
         </motion.div>

@@ -1,7 +1,7 @@
-import { type ComponentProps, useEffect, useId, useRef, useState } from "react";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useScroll, useSpring, useTransform } from "framer-motion";
-import { Bell, Settings, LogOut, X, Sun, Moon, BookOpen, Users } from "lucide-react";
+import { Bell, Settings, LogOut, X, Sun, Moon, BookOpen, Users, Leaf } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -116,8 +116,6 @@ export default function AppHeader() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
-  const logoMarkGradId = useId();
-
   const { scrollY } = useScroll();
   const scrollYSpring = useSpring(scrollY, { stiffness: 380, damping: 45 });
   const headerBg = useTransform(scrollYSpring, [0, 80], ["hsl(var(--surface-0) / 0)", "hsl(var(--surface-0) / 0.95)"]);
@@ -238,44 +236,12 @@ export default function AppHeader() {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
           >
-            <svg
-              viewBox="0 0 40 32"
-              className="h-7 w-9 shrink-0"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden
-            >
-              <defs>
-                <linearGradient id={logoMarkGradId} x1="0" y1="0" x2="40" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="hsl(var(--primary-light))" />
-                  <stop offset="1" stopColor="hsl(var(--primary))" />
-                </linearGradient>
-              </defs>
-              <text
-                x="0"
-                y="24"
-                className="font-display"
-                fontFamily="Plus Jakarta Sans, system-ui, sans-serif"
-                fontSize="20"
-                fontWeight="800"
-                fill={`url(#${logoMarkGradId})`}
-              >
-                NA
-              </text>
-              <circle cx="34" cy="8" r="3" className="fill-[hsl(var(--primary-glow))]" fillOpacity="0.95" />
-              <path
-                d="M4 30c2-4 4-6 7-6s5 2 7 6"
-                className="stroke-[hsl(var(--primary))]"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                opacity="0.35"
-              />
-            </svg>
+            <Leaf className="h-7 w-7 shrink-0 text-primary" strokeWidth={1.85} aria-hidden />
             <span className="flex min-w-0 items-center gap-2" style={{ lineHeight: "28px" }}>
               <span className="font-display text-lg font-black tracking-tighter text-[hsl(var(--ink-1))] sm:text-xl">
-                NutrI
+                Nutr
               </span>
-              <span className="font-display text-lg font-black tracking-tighter sm:text-xl text-brand-animated">Aprova</span>
+              <span className="font-display text-lg font-black tracking-tighter sm:text-xl text-brand-animated">IAprova</span>
               <span className="badge-live text-xs min-h-[1em]" aria-hidden />
             </span>
           </motion.div>

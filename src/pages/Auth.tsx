@@ -50,36 +50,36 @@ function BrandingPanel() {
       initial={{ opacity: 0, x: -60 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-      className="bg-aurora bg-grid relative hidden min-h-screen w-[45%] flex-col justify-between overflow-hidden p-10 text-[hsl(var(--ink-1))] md:flex"
+      className="bg-aurora bg-grid relative hidden min-h-screen w-[45%] flex-col overflow-hidden p-10 text-[hsl(var(--ink-1))] md:flex"
     >
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -left-32 -top-32 h-[420px] w-[420px] rounded-full"
-        style={{ background: "radial-gradient(circle, hsl(158 72% 32% / 0.22) 0%, transparent 65%)" }}
-        animate={{ scale: [1, 1.12, 1], x: [0, 24, 0], y: [0, -16, 0] }}
-        transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 top-1/3 h-[320px] w-[320px] rounded-full"
-        style={{ background: "radial-gradient(circle, hsl(172 60% 38% / 0.16) 0%, transparent 65%)" }}
-        animate={{ scale: [1, 1.08, 1], x: [0, -18, 0] }}
-        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-      />
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute bottom-20 left-1/4 h-[280px] w-[280px] rounded-full"
-        style={{ background: "radial-gradient(circle, hsl(142 55% 28% / 0.12) 0%, transparent 68%)" }}
-        animate={{ scale: [1, 1.1, 1], opacity: [0.7, 1, 0.7] }}
-        transition={{ duration: 13, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-      />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <motion.div
+          className="absolute -left-32 -top-32 h-[420px] w-[420px] rounded-full"
+          style={{ background: "radial-gradient(circle, hsl(158 72% 32% / 0.22) 0%, transparent 65%)" }}
+          animate={{ scale: [1, 1.12, 1], x: [0, 24, 0], y: [0, -16, 0] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute -right-24 top-1/3 h-[320px] w-[320px] rounded-full"
+          style={{ background: "radial-gradient(circle, hsl(172 60% 38% / 0.16) 0%, transparent 65%)" }}
+          animate={{ scale: [1, 1.08, 1], x: [0, -18, 0] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+        />
+        <motion.div
+          className="absolute bottom-20 left-1/4 h-[280px] w-[280px] rounded-full"
+          style={{ background: "radial-gradient(circle, hsl(142 55% 28% / 0.12) 0%, transparent 68%)" }}
+          animate={{ scale: [1, 1.1, 1], opacity: [0.7, 1, 0.7] }}
+          transition={{ duration: 13, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+        />
+      </div>
 
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-end">
       <div className="relative z-10">
         <div className="flex items-center gap-2.5">
           <Leaf className="h-9 w-9 shrink-0 text-primary" strokeWidth={1.75} />
           <h1 className="font-display text-[2.5rem] font-extrabold leading-tight">
             {BRAND_TITLE_WORDS.map((word, i) => (
-              <span key={word} className="inline-block overflow-hidden align-bottom" style={{ marginRight: "0.18em" }}>
+              <span key={word} className="inline-block overflow-hidden align-bottom">
                 <motion.span
                   className={
                     word === "Aprova"
@@ -146,6 +146,7 @@ function BrandingPanel() {
           </div>
         </figcaption>
       </motion.figure>
+      </div>
     </motion.div>
   );
 }
@@ -788,7 +789,7 @@ export default function Auth() {
         </button>
 
         <motion.div
-          className="relative z-10 mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-8 py-12"
+          className="relative z-10 mx-auto flex w-full max-w-sm flex-1 flex-col justify-start px-8 pb-12 pt-24 md:pt-28"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}

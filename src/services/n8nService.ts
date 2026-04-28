@@ -7,6 +7,8 @@ export interface ClientData {
   gender: "masculino" | "feminino";
   weight: number;
   height: number;
+  /** Percentual de gordura corporal (opcional), ex.: 18.5 */
+  bodyFat?: number;
   goal: string;
   allergies: string[];
   activityLevel: string;
