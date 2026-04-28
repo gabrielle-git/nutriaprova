@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import type { AnimationControls } from "framer-motion";
+import { AnimatePresence, motion, useAnimationControls, useInView, useSpring, useTransform } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,15 +10,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import {
-  Coins, Clock, CheckCircle2, Eye, Sparkles, AlertCircle, TrendingUp, FileText, PieChart, Wallet, DollarSign, Users, Lock, Gift, BookOpen, CreditCard, PartyPopper, MessageSquare, ChevronLeft,
+  Coins, Clock, CheckCircle2, Eye, Sparkles, AlertCircle, TrendingUp, FileText, PieChart, Wallet, DollarSign, Users, Lock, Gift, CreditCard, PartyPopper, MessageSquare, ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
+import { getTimeGreeting } from "@/lib/timeGreeting";
 import { toast } from "sonner";
 import { adjustDietWithAI, type DietPlan, type ClientData } from "@/services/n8nService";
 import { jobCoinCost, type PlanTier } from "@/hooks/usePlanTier";
+import type { Database, Json } from "@/integrations/supabase/types";
 
 const SUPREME_EMAIL = "helena.gaby31@gmail.com";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
@@ -29,7 +32,26 @@ import AffiliateTab from "./AffiliateTab";
 import PlansModal from "./PlansModal";
 import NutriRatingsCard from "./NutriRatingsCard";
 
-type DietRequest = any;
+type DietRequest = Database["public"]["Tables"]["diet_requests"]["Row"];
+
+/** `client_data` JSON no banco — pode incluir campos além do contrato n8n. */
+type StoredClientData = Partial<ClientData> & {
+  adherence?: number;
+  name?: string;
+  full_name?: string;
+  goal?: string;
+};
+
+function asStoredClientData(raw: Json | null | undefined): StoredClientData | null {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as StoredClientData;
+}
+
+function adherenceFromStoredClient(cd: StoredClientData | null | undefined): number {
+  const a = cd?.adherence;
+  if (typeof a === "number" && !Number.isNaN(a)) return Math.min(100, Math.max(0, a));
+  return 0;
+}
 
 const STATUS_CONFIG = {
   pending: { label: "Pendente", color: "bg-status-pending", icon: Clock },
@@ -104,6 +126,58 @@ function listStatusVisual(status: string) {
   return { dot: "bg-[hsl(var(--ink-3))]/50", label: "—" };
 }
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.07, delayChildren: 0.06 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 24, scale: 0.96 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { ease: [0.16, 1, 0.3, 1] as const, duration: 0.55 },
+  },
+};
+
+function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true });
+  const spring = useSpring(0, { stiffness: 80, damping: 20 });
+  const display = useTransform(spring, (v) => {
+    const f =
+      decimals <= 0
+        ? Math.round(v)
+        : Math.round(v * 10 ** decimals) / 10 ** decimals;
+    return f.toLocaleString("pt-BR", {
+      minimumFractionDigits: decimals > 0 ? decimals : 0,
+      maximumFractionDigits: decimals,
+    });
+  });
+
+  useEffect(() => {
+    if (isInView) spring.set(value);
+  }, [isInView, value, spring]);
+
+  return (
+    <motion.span ref={ref} className="tabular-nums">
+      {display}
+    </motion.span>
+  );
+}
+
+const rechartsTooltipStyle = {
+  background: "hsl(var(--surface-0))",
+  border: "1px solid hsl(var(--surface-3))",
+  borderRadius: "var(--radius-sm)",
+  backdropFilter: "blur(12px)",
+  boxShadow: "0 8px 32px hsl(var(--ink-1) / 0.12)",
+} as const;
+
 function AdherenceRing({ value, size = 96 }: { value: number; size?: number }) {
   const p = Math.min(100, Math.max(0, value));
   const r = 32;
@@ -139,18 +213,17 @@ type RequestPanelCommon = {
   onAccept: (r: DietRequest) => void;
   onGoRetention: () => void;
   draft: DietPlan | null;
-  clientData: ClientData | any;
+  clientData: StoredClientData | null;
   onBack?: () => void;
+  epicRumbleControls?: AnimationControls;
 };
 
-function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, onOpenPdf, onAccept, onGoRetention, draft, clientData: cd }: RequestPanelCommon) {
+function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, onOpenPdf, onAccept, onGoRetention, draft, clientData: cd, epicRumbleControls }: RequestPanelCommon) {
   const st = STATUS_CONFIG[(request.status as keyof typeof STATUS_CONFIG) ?? "pending"] ?? STATUS_CONFIG.pending;
   const StatusIcon = st.icon;
-  const adherence = typeof (cd as any)?.adherence === "number" && !Number.isNaN(Number((cd as any).adherence))
-    ? Math.min(100, Math.max(0, Number((cd as any).adherence)))
-    : 0;
+  const adherence = adherenceFromStoredClient(cd);
   const meals = draft?.meals;
-  const displayName = patientLabel(cd as { goal?: string; name?: string; full_name?: string } | null | undefined, request.id);
+  const displayName = patientLabel(cd, request.id);
   return (
     <div className="space-y-8">
       {onBack && (
@@ -186,11 +259,27 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="card-clinical p-4 transition-shadow hover:shadow-sm">
           <p className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--ink-3))]">Peso</p>
-          <p className="mt-1.5 font-display text-lg font-bold text-[hsl(var(--ink-1))]">{cd?.weight != null ? `${cd.weight} kg` : "—"}</p>
+          <p className="mt-1.5 font-display text-lg font-bold text-[hsl(var(--ink-1))]">
+            {cd?.weight != null ? (
+              <>
+                <AnimatedNumber value={Number(cd.weight)} decimals={1} /> kg
+              </>
+            ) : (
+              "—"
+            )}
+          </p>
         </div>
         <div className="card-clinical p-4 transition-shadow hover:shadow-sm">
           <p className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--ink-3))]">Altura</p>
-          <p className="mt-1.5 font-display text-lg font-bold text-[hsl(var(--ink-1))]">{cd?.height != null ? `${cd.height} cm` : "—"}</p>
+          <p className="mt-1.5 font-display text-lg font-bold text-[hsl(var(--ink-1))]">
+            {cd?.height != null ? (
+              <>
+                <AnimatedNumber value={Number(cd.height)} decimals={0} /> cm
+              </>
+            ) : (
+              "—"
+            )}
+          </p>
         </div>
         <div className="card-clinical p-4 transition-shadow hover:shadow-sm">
           <p className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--ink-3))]">Objetivo</p>
@@ -200,7 +289,9 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
           <p className="text-[10px] font-medium uppercase tracking-wider text-[hsl(var(--ink-3))]">Adesão</p>
           <div className="mt-2 flex items-center justify-center gap-3">
             <AdherenceRing value={adherence} size={88} />
-            <span className="font-display text-4xl font-bold tabular-nums text-brand leading-none">{adherence}%</span>
+            <span className="font-display text-4xl font-bold tabular-nums text-brand leading-none">
+              <AnimatedNumber value={adherence} decimals={0} />%
+            </span>
           </div>
         </div>
       </div>
@@ -210,7 +301,7 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
         {meals ? (
           <ul className="relative ms-1 space-y-0 border-l border-[hsl(var(--surface-3))] pl-6">
             {MEAL_TIMELINE.map((row, i) => {
-              const m = (meals as any)[row.k] as { name?: string; calories?: number } | undefined;
+              const m = meals?.[row.k];
               const color = TIMELINE_DOT[i % TIMELINE_DOT.length];
               return (
                 <li key={row.k} className="relative pb-6 last:pb-0">
@@ -235,10 +326,26 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
       <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         {request.status === "pending" && (
           profile && profile.credits > 0 ? (
-            <Button type="button" className="btn-primary flex items-center justify-center gap-2 pulse-brand" onClick={() => onAccept(request)}>
-              <Sparkles className="h-4 w-4" />
+            <motion.button
+              type="button"
+              animate={epicRumbleControls}
+              whileHover={{ scale: 1.04, y: -3 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 350 }}
+              className={cn(
+                "btn-primary btn-breathe border-beam relative flex h-11 items-center justify-center gap-2 overflow-hidden px-4 text-sm font-semibold text-primary-foreground",
+              )}
+              onClick={() => onAccept(request)}
+            >
+              <motion.span
+                className="inline-flex"
+                animate={{ x: [0, 3, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <Sparkles className="icon-glow h-4 w-4 shrink-0" />
+              </motion.span>
               Gerar Plano com IA
-            </Button>
+            </motion.button>
           ) : (
             <Button type="button" className="btn-primary opacity-50" disabled>
               <Sparkles className="h-4 w-4" /> Sem moedas
@@ -246,10 +353,26 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
           )
         )}
         {request.status === "in_review" && request.nutritionist_id === userId && (
-          <Button type="button" className="btn-primary flex items-center justify-center gap-2 pulse-brand" onClick={() => onOpenReview(request)}>
-            <Sparkles className="h-4 w-4" />
+          <motion.button
+            type="button"
+            animate={epicRumbleControls}
+            whileHover={{ scale: 1.04, y: -3 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 350 }}
+            className={cn(
+              "btn-primary btn-breathe border-beam relative flex h-11 items-center justify-center gap-2 overflow-hidden px-4 text-sm font-semibold text-primary-foreground",
+            )}
+            onClick={() => onOpenReview(request)}
+          >
+            <motion.span
+              className="inline-flex"
+              animate={{ x: [0, 3, 0] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <Sparkles className="icon-glow h-4 w-4 shrink-0" />
+            </motion.span>
             Gerar Plano com IA
-          </Button>
+          </motion.button>
         )}
         <Button
           type="button"
@@ -276,7 +399,7 @@ function PatientDetailPanel({ request, userId, profile, onBack, onOpenReview, on
 
 export default function NutritionistDashboard() {
   const { user, profile, refreshProfile } = useAuth();
-  const navigate = useNavigate();
+  const epicRumble = useAnimationControls();
   const [requests, setRequests] = useState<DietRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<DietRequest | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -298,7 +421,7 @@ export default function NutritionistDashboard() {
       .order("created_at", { ascending: false });
     if (data) {
       // Prioritize: my exclusive leads first, then public pending, then in_review/completed
-      const sorted = [...data].sort((a: any, b: any) => {
+      const sorted = [...data].sort((a, b) => {
         const aMine = a.assigned_nutritionist_id === user?.id ? 0 : 1;
         const bMine = b.assigned_nutritionist_id === user?.id ? 0 : 1;
         return aMine - bMine;
@@ -336,13 +459,15 @@ export default function NutritionistDashboard() {
       .on("postgres_changes", { event: "*", schema: "public", table: "diet_requests" }, () => fetchRequests())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+    // Intencional: reage ao perfil carregado; fetchRequests/refreshProfile são estáveis o suficiente para o efeito desejado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- evita re-subscribe em todo render
   }, [profile?.id]);
 
   const handleAcceptJob = async (request: DietRequest) => {
     if (!user || !profile) return;
 
     // Custo de moeda depende do plano. Clínica (e Admin Supremo) = 0.
-    const tier = ((profile as any).plan_tier ?? "basic") as PlanTier;
+    const tier = (profile?.plan_tier ?? "basic") as PlanTier;
     const isSupreme = user.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
     const coinCost = isSupreme ? 0 : jobCoinCost(tier);
 
@@ -379,11 +504,19 @@ export default function NutritionistDashboard() {
       });
 
       await refreshProfile();
+      void epicRumble.start({
+        x: [0, -3, 3, -2, 2, 0],
+        transition: { duration: 0.4 },
+      });
       toast.success("Job aceito! Boa validação.");
     } else {
       await supabase.from("transactions").insert({
         user_id: user.id, amount: 0, type: "job_acceptance",
         description: `Aceitou job #${request.id.slice(0, 8)} (Clínica — validação ilimitada)`,
+      });
+      void epicRumble.start({
+        x: [0, -3, 3, -2, 2, 0],
+        transition: { duration: 0.4 },
       });
       toast.success("Job aceito! Validação ilimitada do plano Clínica.");
     }
@@ -398,6 +531,10 @@ export default function NutritionistDashboard() {
       status: "completed",
       notes: expertComment || null,
     }).eq("id", selectedRequest.id);
+    void epicRumble.start({
+      x: [0, -3, 3, -2, 2, 0],
+      transition: { duration: 0.4 },
+    });
     toast.success("Plano aprovado e enviado ao cliente!");
     setExpertComment("");
     setSheetOpen(false);
@@ -410,9 +547,13 @@ export default function NutritionistDashboard() {
     try {
       const currentDraft = selectedRequest.ai_draft as unknown as DietPlan;
       const newDraft = await adjustDietWithAI(currentDraft, aiInstruction);
-      await supabase.from("diet_requests").update({ ai_draft: newDraft as any }).eq("id", selectedRequest.id);
-      setSelectedRequest({ ...selectedRequest, ai_draft: newDraft as any });
+      await supabase.from("diet_requests").update({ ai_draft: newDraft as unknown as Json }).eq("id", selectedRequest.id);
+      setSelectedRequest({ ...selectedRequest, ai_draft: newDraft as unknown as Json });
       setAiInstruction("");
+      void epicRumble.start({
+        x: [0, -3, 3, -2, 2, 0],
+        transition: { duration: 0.4 },
+      });
       toast.success("Plano ajustado pela IA!");
     } catch { toast.error("Erro ao ajustar plano"); }
     finally { setAdjusting(false); }
@@ -432,21 +573,26 @@ export default function NutritionistDashboard() {
   };
 
   const draft = selectedRequest?.ai_draft as unknown as DietPlan | null;
-  const clientData = selectedRequest?.client_data as any;
+  const clientData = asStoredClientData(selectedRequest?.client_data);
   const completedCount = requests.filter(r => r.status === "completed" && r.nutritionist_id === user?.id).length;
   const withdrawalBalance = completedCount * 15;
   const isSelectedCompleted = selectedRequest?.status === "completed";
-  const planTier = (profile as any)?.plan_tier as string | undefined;
+  const planTier = profile?.plan_tier;
   const activePatientsCount = requests.filter(
     (r) => r.nutritionist_id === user?.id && (r.status === "in_review" || r.status === "completed"),
   ).length;
   const exclusiveLeads = requests.filter((r) => r.status === "pending" && r.assigned_nutritionist_id === user?.id);
 
   return (
-    <div className="mx-auto min-h-0 max-w-[1600px] bg-[hsl(var(--surface-0))] p-4 md:px-6 md:py-5">
+    <motion.div
+      className="bg-aurora-soft mx-auto min-h-0 max-w-[1600px] bg-[hsl(var(--surface-0))] p-4 md:px-6 md:py-5"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
       {/* Welcome Bonus Banner (only when starting with bonus credits and no completed jobs yet) */}
       {profile && profile.credits > 0 && completedCount === 0 && (
-        <div className="mb-6 rounded-xl border-2 border-primary/40 bg-gradient-to-r from-primary/10 via-accent/20 to-primary/10 p-4 flex items-start gap-3">
+        <motion.div variants={itemVariants} className="mb-6 flex items-start gap-3 rounded-xl border-2 border-primary/40 bg-gradient-to-r from-primary/10 via-accent/20 to-primary/10 p-4">
           <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/20 flex-shrink-0">
             <PartyPopper className="h-5 w-5 text-primary" />
           </div>
@@ -461,11 +607,11 @@ export default function NutritionistDashboard() {
               (incluindo bônus de indicação de novos clientes).
             </p>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {profile && profile.credits === 0 && (
-        <div className="mb-6 rounded-xl border-2 border-destructive/40 bg-destructive/5 p-4 flex items-center gap-3">
+        <motion.div variants={itemVariants} className="mb-6 flex items-center gap-3 rounded-xl border-2 border-destructive/40 bg-destructive/5 p-4">
           <AlertCircle className="h-6 w-6 text-destructive flex-shrink-0" />
           <div className="flex-1">
             <p className="font-display font-bold text-sm text-foreground">Suas moedas acabaram!</p>
@@ -474,15 +620,23 @@ export default function NutritionistDashboard() {
           <Button size="sm" onClick={() => setPlansOpen(true)} className="emerald-gradient text-primary-foreground whitespace-nowrap">
             <CreditCard className="h-4 w-4 mr-1" /> Ver Planos
           </Button>
-        </div>
+        </motion.div>
       )}
 
       {/* Cabeçalho clínico + toolbar */}
-      <div className="mb-6 flex flex-col gap-4 border-b border-[1px] border-[hsl(var(--surface-3))] pb-6 lg:flex-row lg:items-center lg:justify-between">
+      <motion.div variants={itemVariants} className="mb-6 flex flex-col gap-4 border-b border-[1px] border-[hsl(var(--surface-3))] pb-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-[hsl(var(--ink-1))] md:text-[1.75rem]">
-            Painel Clínico
-          </h1>
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium text-[hsl(var(--ink-2))]">
+              {getTimeGreeting()}
+              {profile?.full_name?.trim()
+                ? `, ${profile.full_name.split(/\s+/)[0]}`
+                : ""}
+            </p>
+            <h1 className="font-display text-2xl font-bold tracking-[-0.02em] text-[hsl(var(--ink-1))] md:text-[1.75rem]">
+              Painel Clínico
+            </h1>
+          </div>
           <div className="flex flex-wrap items-center gap-2.5">
             {planTier === "premium" || planTier === "clinic" ? (
               <span className="badge-gold w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold">Pro</span>
@@ -499,46 +653,96 @@ export default function NutritionistDashboard() {
               className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-2.5 text-xs font-bold text-white tabular-nums shadow-sm"
               title="Pacientes ativos (revisão + concluídos com você)"
             >
-              {activePatientsCount}
+              <AnimatedNumber value={activePatientsCount} decimals={0} />
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2 rounded-full border border-coin-gold/30 bg-coin-gold/10 px-3 py-1.5">
             <Coins className="h-3.5 w-3.5 text-coin-gold" />
-            <span className="font-display text-sm font-bold text-coin-gold-foreground">{profile?.credits ?? 0}</span>
+            <span className="font-display text-sm font-bold text-coin-gold-foreground">
+              <AnimatedNumber value={profile?.credits ?? 0} decimals={0} />
+            </span>
             <span className="text-[10px] text-[hsl(var(--ink-3))]">moedas</span>
           </div>
           <Button size="sm" onClick={() => setPlansOpen(true)} className="emerald-gradient gap-1 text-primary-foreground">
             <CreditCard className="h-4 w-4" /> Planos
           </Button>
-          <Button size="sm" variant="outline" className="gap-1 border-[hsl(var(--primary))]/40 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/8" onClick={() => navigate("/blog")}>
-            <BookOpen className="h-4 w-4" /> Novo Artigo
-          </Button>
         </div>
-      </div>
+      </motion.div>
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="space-y-6">
-        <TabsList className="h-auto w-full max-w-3xl flex-wrap justify-start gap-1 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1.5 sm:inline-flex sm:w-auto">
-          <TabsTrigger
-            value="jobs"
-            className="gap-1.5 rounded-lg px-4 py-2.5 text-sm data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:shadow-sm"
+        <motion.div variants={itemVariants} className="w-full">
+          <div
+            role="tablist"
+            aria-label="Seções do painel clínico"
+            className="flex h-auto w-full max-w-3xl flex-wrap justify-start gap-0.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1.5 sm:inline-flex sm:w-auto"
           >
-            <FileText className="h-4 w-4" /> Solicitações
-          </TabsTrigger>
-          <TabsTrigger
-            value="retention"
-            className="gap-1.5 rounded-lg px-4 py-2.5 text-sm data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:shadow-sm"
-          >
-            <Users className="h-4 w-4" /> Retenção & Acompanhamento
-          </TabsTrigger>
-          <TabsTrigger
-            value="affiliate"
-            className="gap-1.5 rounded-lg px-4 py-2.5 text-sm data-[state=active]:bg-[hsl(var(--surface-0))] data-[state=active]:shadow-sm"
-          >
-            <Gift className="h-4 w-4" /> Indique e Ganhe
-          </TabsTrigger>
-        </TabsList>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainTab === "jobs"}
+              onClick={() => setMainTab("jobs")}
+              className={cn(
+                "relative z-0 inline-flex min-h-[2.75rem] items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium",
+                mainTab === "jobs" ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+              )}
+            >
+              {mainTab === "jobs" && (
+                <motion.div
+                  layoutId="nutri-dash-tab-bg"
+                  className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm dark:bg-[hsl(var(--surface-1))]"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <FileText className="h-4 w-4 shrink-0" /> Solicitações
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainTab === "retention"}
+              onClick={() => setMainTab("retention")}
+              className={cn(
+                "relative z-0 inline-flex min-h-[2.75rem] items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium",
+                mainTab === "retention" ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+              )}
+            >
+              {mainTab === "retention" && (
+                <motion.div
+                  layoutId="nutri-dash-tab-bg"
+                  className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm dark:bg-[hsl(var(--surface-1))]"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <Users className="h-4 w-4 shrink-0" /> Retenção & Acompanhamento
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainTab === "affiliate"}
+              onClick={() => setMainTab("affiliate")}
+              className={cn(
+                "relative z-0 inline-flex min-h-[2.75rem] items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium",
+                mainTab === "affiliate" ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+              )}
+            >
+              {mainTab === "affiliate" && (
+                <motion.div
+                  layoutId="nutri-dash-tab-bg"
+                  className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm dark:bg-[hsl(var(--surface-1))]"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <Gift className="h-4 w-4 shrink-0" /> Indique e Ganhe
+              </span>
+            </button>
+          </div>
+        </motion.div>
 
         <TabsContent value="jobs" className="space-y-8 focus-visible:outline-none">
           {exclusiveLeads.length > 0 && (
@@ -546,16 +750,28 @@ export default function NutritionistDashboard() {
               <div className="flex items-center justify-between border-b border-[1px] border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-3.5">
                 <h2 className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Novos Leads</h2>
                 <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-[hsl(var(--primary))] px-2 text-xs font-bold text-white">
-                  {exclusiveLeads.length}
+                  <AnimatedNumber value={exclusiveLeads.length} decimals={0} />
                 </span>
               </div>
               <ul className="divide-y divide-[hsl(var(--surface-3))]">
-                {exclusiveLeads.map((req) => {
-                  const d = req.client_data as { goal?: string; name?: string; full_name?: string } | null | undefined;
+                {exclusiveLeads.map((req, index) => {
+                  const d = asStoredClientData(req.client_data);
                   const g = avatarGradientHsl((d?.goal || req.id) as string);
                   const nameLine = patientLabel(d, req.id);
                   return (
-                    <li key={req.id} className="flex items-center justify-between gap-3 px-4 py-3.5">
+                    <motion.li
+                      key={req.id}
+                      initial={{ opacity: 0, x: -16, scale: 0.97 }}
+                      animate={{ opacity: 1, x: 0, scale: 1 }}
+                      transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                      whileHover={{
+                        x: 8,
+                        backgroundColor: "hsl(var(--surface-1))",
+                        transition: { duration: 0.15 },
+                      }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center justify-between gap-3 px-4 py-3.5"
+                    >
                       <div className="flex min-w-0 items-center gap-3">
                         <div
                           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm"
@@ -584,7 +800,7 @@ export default function NutritionistDashboard() {
                           Ativar
                         </Button>
                       )}
-                    </li>
+                    </motion.li>
                   );
                 })}
               </ul>
@@ -603,25 +819,70 @@ export default function NutritionistDashboard() {
             <>
               <div className="md:hidden">
                 <Tabs value={clinicTab} onValueChange={(v) => setClinicTab(v as "list" | "detail")}>
-                  <TabsList className="mb-3 grid w-full grid-cols-2 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1">
-                    <TabsTrigger value="list" className="rounded-lg data-[state=active]:bg-[hsl(var(--surface-0))]">
-                      Lista
-                    </TabsTrigger>
-                    <TabsTrigger value="detail" className="rounded-lg data-[state=active]:bg-[hsl(var(--surface-0))]" disabled={!selectedRequest}>
-                      Detalhe
-                    </TabsTrigger>
-                  </TabsList>
+                  <div
+                    role="tablist"
+                    className="mb-3 grid w-full grid-cols-2 gap-0.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={clinicTab === "list"}
+                      onClick={() => setClinicTab("list")}
+                      className={cn(
+                        "relative z-0 rounded-lg py-2.5 text-sm font-medium",
+                        clinicTab === "list" ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-2))]",
+                      )}
+                    >
+                      {clinicTab === "list" && (
+                        <motion.div
+                          layoutId="nutri-clinic-tab-bg"
+                          className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm dark:bg-[hsl(var(--surface-1))]"
+                          transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                        />
+                      )}
+                      <span className="relative z-10">Lista</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={clinicTab === "detail"}
+                      disabled={!selectedRequest}
+                      onClick={() => selectedRequest && setClinicTab("detail")}
+                      className={cn(
+                        "relative z-0 rounded-lg py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50",
+                        clinicTab === "detail" ? "text-[hsl(var(--ink-1))]" : "text-[hsl(var(--ink-2))]",
+                      )}
+                    >
+                      {clinicTab === "detail" && (
+                        <motion.div
+                          layoutId="nutri-clinic-tab-bg"
+                          className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm dark:bg-[hsl(var(--surface-1))]"
+                          transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                        />
+                      )}
+                      <span className="relative z-10">Detalhe</span>
+                    </button>
+                  </div>
                   <TabsContent value="list" className="mt-0 max-h-[min(70vh,520px)] space-y-2 overflow-y-auto pr-0.5">
-                    {requests.map((req) => {
-                      const d = req.client_data as { goal?: string; age?: number; name?: string; full_name?: string } | null | undefined;
+                    {requests.map((req, index) => {
+                      const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
                       const vis = listStatusVisual(String(req.status));
                       const isSel = selectedRequest?.id === req.id;
                       const act = (req as { updated_at?: string }).updated_at || req.created_at;
                       return (
-                        <button
+                        <motion.button
                           key={req.id}
                           type="button"
+                          initial={{ opacity: 0, x: -16, scale: 0.97 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                          whileHover={{
+                            x: 8,
+                            backgroundColor: "hsl(var(--surface-1))",
+                            transition: { duration: 0.15 },
+                          }}
+                          whileTap={{ scale: 0.98 }}
                           onClick={() => {
                             setSelectedRequest(req);
                             setClinicTab("detail");
@@ -651,28 +912,39 @@ export default function NutritionistDashboard() {
                               </p>
                             </div>
                           </div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </TabsContent>
                   <TabsContent value="detail" className="mt-0 min-h-[320px]">
-                    {selectedRequest ? (
-                      <PatientDetailPanel
-                        request={selectedRequest}
-                        userId={user?.id}
-                        profile={profile}
-                        onBack={() => setClinicTab("list")}
-                        onOpenReview={openReview}
-                        onOpenPdf={openPdfView}
-                        onAccept={handleAcceptJob}
-                        onGoRetention={() => {
-                          setMainTab("retention");
-                          setClinicTab("list");
-                        }}
-                        draft={selectedRequest.ai_draft as unknown as DietPlan | null}
-                        clientData={selectedRequest.client_data as any}
-                      />
-                    ) : null}
+                    <AnimatePresence mode="wait">
+                      {selectedRequest ? (
+                        <motion.div
+                          key={selectedRequest.id}
+                          initial={{ opacity: 0, x: 30, filter: "blur(6px)" }}
+                          animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, x: -20, filter: "blur(4px)" }}
+                          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                          <PatientDetailPanel
+                            request={selectedRequest}
+                            userId={user?.id}
+                            profile={profile}
+                            onBack={() => setClinicTab("list")}
+                            onOpenReview={openReview}
+                            onOpenPdf={openPdfView}
+                            onAccept={handleAcceptJob}
+                            onGoRetention={() => {
+                              setMainTab("retention");
+                              setClinicTab("list");
+                            }}
+                            draft={selectedRequest.ai_draft as unknown as DietPlan | null}
+                            clientData={asStoredClientData(selectedRequest.client_data)}
+                            epicRumbleControls={epicRumble}
+                          />
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
                   </TabsContent>
                 </Tabs>
               </div>
@@ -683,16 +955,25 @@ export default function NutritionistDashboard() {
                     <p className="font-display text-xs font-semibold tracking-wide text-[hsl(var(--ink-2))]">Pacientes</p>
                   </div>
                   <div className="flex-1 space-y-1.5 overflow-y-auto p-2.5">
-                    {requests.map((req) => {
-                      const d = req.client_data as { goal?: string; name?: string; full_name?: string } | null | undefined;
+                    {requests.map((req, index) => {
+                      const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
                       const vis = listStatusVisual(String(req.status));
                       const isSel = selectedRequest?.id === req.id;
                       const act = (req as { updated_at?: string }).updated_at || req.created_at;
                       return (
-                        <button
+                        <motion.button
                           key={req.id}
                           type="button"
+                          initial={{ opacity: 0, x: -16, scale: 0.97 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                          whileHover={{
+                            x: 8,
+                            backgroundColor: "hsl(var(--surface-1))",
+                            transition: { duration: 0.15 },
+                          }}
+                          whileTap={{ scale: 0.98 }}
                           onClick={() => setSelectedRequest(req)}
                           className={cn(
                             "card-clinical w-full p-2.5 text-left transition-all hover:shadow-sm",
@@ -720,35 +1001,59 @@ export default function NutritionistDashboard() {
                               </p>
                             </div>
                           </div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
                 </aside>
                 <main className="min-w-0 flex-1 overflow-y-auto bg-[hsl(var(--surface-0))] p-4 lg:p-6">
-                  {selectedRequest ? (
-                    <PatientDetailPanel
-                      request={selectedRequest}
-                      userId={user?.id}
-                      profile={profile}
-                      onOpenReview={openReview}
-                      onOpenPdf={openPdfView}
-                      onAccept={handleAcceptJob}
-                      onGoRetention={() => setMainTab("retention")}
-                      draft={selectedRequest.ai_draft as unknown as DietPlan | null}
-                      clientData={selectedRequest.client_data as any}
-                    />
-                  ) : (
-                    <div className="flex h-full min-h-[320px] items-center justify-center p-6 text-center text-sm font-sans text-[hsl(var(--ink-3))]">
-                      Selecione um paciente na lista para ver detalhes clínicos.
-                    </div>
-                  )}
+                  <AnimatePresence mode="wait">
+                    {selectedRequest ? (
+                      <motion.div
+                        key={selectedRequest.id}
+                        initial={{ opacity: 0, x: 30, filter: "blur(6px)" }}
+                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, x: -20, filter: "blur(4px)" }}
+                        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                      >
+                        <PatientDetailPanel
+                          request={selectedRequest}
+                          userId={user?.id}
+                          profile={profile}
+                          onOpenReview={openReview}
+                          onOpenPdf={openPdfView}
+                          onAccept={handleAcceptJob}
+                          onGoRetention={() => setMainTab("retention")}
+                          draft={selectedRequest.ai_draft as unknown as DietPlan | null}
+                          clientData={asStoredClientData(selectedRequest.client_data)}
+                          epicRumbleControls={epicRumble}
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="empty-detail"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="flex h-full min-h-[320px] items-center justify-center p-6 text-center text-sm font-sans text-[hsl(var(--ink-3))]"
+                      >
+                        Selecione um paciente na lista para ver detalhes clínicos.
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </main>
               </div>
             </>
           )}
 
-          <section className="space-y-6 border-t border-[1px] border-[hsl(var(--surface-3))] pt-8" aria-label="Métricas do negócio">
+          <motion.section
+            variants={itemVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-6 border-t border-[1px] border-[hsl(var(--surface-3))] pt-8"
+            aria-label="Métricas do negócio"
+          >
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <div className="card-clinical overflow-hidden border-[hsl(var(--surface-3))] p-0 shadow-sm">
                 <div className="border-b border-[1px] border-[hsl(var(--surface-3))] px-4 py-3">
@@ -763,14 +1068,15 @@ export default function NutritionistDashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--surface-3))" />
                       <XAxis dataKey="month" tick={{ fontSize: 12, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
                       <YAxis tick={{ fontSize: 12, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(var(--surface-0))",
-                          border: "1px solid hsl(var(--surface-3))",
-                          borderRadius: 8,
-                        }}
+                      <Tooltip contentStyle={{ ...rechartsTooltipStyle }} />
+                      <Bar
+                        dataKey="ganho"
+                        fill="hsl(var(--primary))"
+                        radius={[4, 4, 0, 0]}
+                        isAnimationActive
+                        animationDuration={800}
+                        animationEasing="ease-out"
                       />
-                      <Bar dataKey="ganho" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -788,19 +1094,15 @@ export default function NutritionistDashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--surface-3))" />
                       <XAxis dataKey="month" tick={{ fontSize: 12, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
                       <YAxis tick={{ fontSize: 12, fill: "hsl(var(--ink-3))" }} stroke="hsl(var(--ink-3))" />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(var(--surface-0))",
-                          border: "1px solid hsl(var(--surface-3))",
-                          borderRadius: 8,
-                        }}
-                      />
+                      <Tooltip contentStyle={{ ...rechartsTooltipStyle }} />
                       <Line
                         type="monotone"
                         dataKey="validacoes"
                         stroke="hsl(var(--primary))"
                         strokeWidth={2}
                         dot={{ fill: "hsl(var(--primary))" }}
+                        isAnimationActive
+                        animationDuration={1200}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -810,13 +1112,21 @@ export default function NutritionistDashboard() {
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               {[
-                { label: "Validadas", value: completedCount, em: "text-primary" },
-                { label: "Pendentes", value: requests.filter((r) => r.status === "pending").length, em: "text-[hsl(var(--ink-1))]" },
-                { label: "Em revisão", value: requests.filter((r) => r.status === "in_review" && r.nutritionist_id === user?.id).length, em: "text-[hsl(var(--ink-1))]" },
-                { label: "Saldo", value: `R$ ${withdrawalBalance.toFixed(2)}`, em: "text-primary" },
+                { label: "Validadas", value: completedCount, em: "text-primary", money: false },
+                { label: "Pendentes", value: requests.filter((r) => r.status === "pending").length, em: "text-[hsl(var(--ink-1))]", money: false },
+                { label: "Em revisão", value: requests.filter((r) => r.status === "in_review" && r.nutritionist_id === user?.id).length, em: "text-[hsl(var(--ink-1))]", money: false },
+                { label: "Saldo", value: withdrawalBalance, em: "text-primary", money: true },
               ].map((s) => (
                 <div key={s.label} className="card-clinical p-4 text-center shadow-sm">
-                  <p className={cn("text-2xl font-display font-bold", s.em)}>{s.value}</p>
+                  <p className={cn("text-2xl font-display font-bold", s.em)}>
+                    {s.money ? (
+                      <>
+                        R$ <AnimatedNumber value={s.value} decimals={2} />
+                      </>
+                    ) : (
+                      <AnimatedNumber value={s.value} decimals={0} />
+                    )}
+                  </p>
                   <p className="text-[10px] font-medium text-[hsl(var(--ink-3))]">{s.label}</p>
                 </div>
               ))}
@@ -830,7 +1140,9 @@ export default function NutritionistDashboard() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Saldo Disponível</p>
-                    <p className="font-display text-lg font-bold text-primary">R$ {withdrawalBalance.toFixed(2)}</p>
+                    <p className="font-display text-lg font-bold text-primary">
+                      R$ <AnimatedNumber value={withdrawalBalance} decimals={2} />
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 sm:border-l sm:border-[hsl(var(--surface-3))] sm:pl-4">
@@ -839,7 +1151,9 @@ export default function NutritionistDashboard() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Moedas Restantes</p>
-                    <p className="font-display text-lg font-bold">{profile?.credits ?? 0}</p>
+                    <p className="font-display text-lg font-bold">
+                      <AnimatedNumber value={profile?.credits ?? 0} decimals={0} />
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 sm:border-l sm:border-[hsl(var(--surface-3))] sm:pl-4">
@@ -848,7 +1162,9 @@ export default function NutritionistDashboard() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Potencial com moedas</p>
-                    <p className="font-display text-lg font-bold text-primary">R$ {((profile?.credits ?? 0) * 15).toFixed(2)}</p>
+                    <p className="font-display text-lg font-bold text-primary">
+                      R$ <AnimatedNumber value={(profile?.credits ?? 0) * 15} decimals={2} />
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -857,7 +1173,7 @@ export default function NutritionistDashboard() {
             <NutriRatingsCard />
 
             <SignatureEditor />
-          </section>
+          </motion.section>
         </TabsContent>
 
         {/* Retention Tab */}
@@ -967,7 +1283,7 @@ export default function NutritionistDashboard() {
         </SheetContent>
       </Sheet>
 
-      <PlansModal open={plansOpen} onOpenChange={setPlansOpen} currentTier={(profile as any)?.plan_tier || "basic"} />
-    </div>
+      <PlansModal open={plansOpen} onOpenChange={setPlansOpen} currentTier={profile?.plan_tier || "basic"} />
+    </motion.div>
   );
 }

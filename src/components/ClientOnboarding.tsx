@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,8 @@ type ClientOnboardingForm = Omit<ClientData, "gender" | "weight" | "height"> & {
   gender: ClientData["gender"] | "";
   weight: number | "";
   height: number | "";
+  targetWeight: number | "";
+  targetTimelineMonths: number | "";
 };
 
 const EMPTY_FORM: ClientOnboardingForm = {
@@ -57,7 +59,11 @@ const EMPTY_FORM: ClientOnboardingForm = {
   allergies: [],
   activityLevel: "moderate",
   additionalNotes: "",
+  targetWeight: "",
+  targetTimelineMonths: "",
 };
+
+const COMPOSITION_GOALS = new Set(["perder_peso", "ganhar_massa"]);
 
 const isFilled = (value: unknown) =>
   value !== null &&
@@ -98,6 +104,8 @@ const mergeClientData = (
     allergies: read("allergies"),
     activityLevel: read("activityLevel"),
     additionalNotes: read("additionalNotes"),
+    targetWeight: read("targetWeight"),
+    targetTimelineMonths: read("targetTimelineMonths"),
   };
 };
 
@@ -183,6 +191,8 @@ export default function ClientOnboarding() {
             : "moderate",
         additionalNotes:
           typeof hydrated.additionalNotes === "string" ? hydrated.additionalNotes : "",
+        targetWeight: coerceNumber(hydrated.targetWeight),
+        targetTimelineMonths: coerceNumber(hydrated.targetTimelineMonths),
       });
       setSelectedGoals(goals);
     };
@@ -193,6 +203,49 @@ export default function ClientOnboarding() {
       cancelled = true;
     };
   }, [user]);
+
+  const needsCompositionMeta = useMemo(
+    () => selectedGoals.some((g) => COMPOSITION_GOALS.has(g)),
+    [selectedGoals],
+  );
+
+  /** Persiste data de nascimento e dados básicos ao sair do passo 0 (antes só gravava após gerar o plano). */
+  const persistBirthAndBasicsFromStep0 = async () => {
+    if (!user || !formData.birthDate) return;
+    try {
+      const { data: row, error: fetchErr } = await (supabase as any)
+        .from("profiles")
+        .select("client_data")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (fetchErr) {
+        console.warn("[ClientOnboarding] persist step0 fetch:", fetchErr.message);
+        return;
+      }
+      const prev = (row?.client_data ?? {}) as Record<string, unknown>;
+      const weight =
+        formData.weight === "" ? undefined : Number(formData.weight);
+      const height =
+        formData.height === "" ? undefined : Number(formData.height);
+      const { error } = await (supabase as any)
+        .from("profiles")
+        .update({
+          birth_date: formData.birthDate,
+          client_data: {
+            ...prev,
+            birthDate: formData.birthDate,
+            ...(weight !== undefined ? { weight } : {}),
+            ...(height !== undefined ? { height } : {}),
+            ...(formData.gender ? { gender: formData.gender } : {}),
+            activityLevel: formData.activityLevel,
+          },
+        })
+        .eq("user_id", user.id);
+      if (error) console.warn("[ClientOnboarding] persist step0 update:", error.message);
+    } catch (e) {
+      console.warn("[ClientOnboarding] persist step0", e);
+    }
+  };
 
   const toggleGoal = (goal: string) => {
     setSelectedGoals((prev) =>
@@ -231,17 +284,34 @@ export default function ClientOnboarding() {
       return;
     }
 
+    if (needsCompositionMeta) {
+      if (!formData.targetWeight || !formData.targetTimelineMonths) {
+        toast.error("Informe seu peso alvo e em quantos meses deseja atingir a meta.");
+        setStep(2);
+        return;
+      }
+    }
+
     setStep(3);
     setGenerating(true);
     // Narrow do gender: já validado pelo guard acima, portanto podemos afirmar
     // que é "masculino" | "feminino" e casar com o tipo ClientData exigido pela IA.
     const dataToSend: ClientData = {
-      ...formData,
       age: calculateAge(formData.birthDate),
+      birthDate: formData.birthDate,
       gender: formData.gender as "masculino" | "feminino",
       weight: Number(formData.weight),
       height: Number(formData.height),
       goal: selectedGoals.join(", "),
+      allergies: formData.allergies,
+      activityLevel: formData.activityLevel,
+      additionalNotes: formData.additionalNotes?.trim() || undefined,
+      ...(needsCompositionMeta
+        ? {
+            targetWeight: Number(formData.targetWeight),
+            targetTimelineMonths: Number(formData.targetTimelineMonths),
+          }
+        : {}),
     };
 
     try {
@@ -358,6 +428,15 @@ export default function ClientOnboarding() {
       );
     }
     if (step === 1) return selectedGoals.length > 0;
+    if (step === 2) {
+      if (!needsCompositionMeta) return true;
+      return (
+        typeof formData.targetWeight === "number" &&
+        formData.targetWeight > 0 &&
+        typeof formData.targetTimelineMonths === "number" &&
+        formData.targetTimelineMonths > 0
+      );
+    }
     return true;
   };
 
@@ -495,7 +574,17 @@ export default function ClientOnboarding() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={() => setStep(1)} disabled={!canProceed()} className="w-full">
+                <Button
+                  onClick={() => {
+                    void (async () => {
+                      if (!canProceed()) return;
+                      await persistBirthAndBasicsFromStep0();
+                      setStep(1);
+                    })();
+                  }}
+                  disabled={!canProceed()}
+                  className="w-full"
+                >
                   Próximo <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </CardContent>
@@ -551,6 +640,47 @@ export default function ClientOnboarding() {
                 <p className="text-sm text-muted-foreground">Selecione todas que se aplicam (opcional)</p>
               </CardHeader>
               <CardContent className="space-y-4">
+                {needsCompositionMeta && (
+                  <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 space-y-4">
+                    <p className="text-sm font-medium text-foreground">Sua meta de composição corporal</p>
+                    <div>
+                      <Label htmlFor="targetWeight">Qual o seu peso alvo? (kg)</Label>
+                      <Input
+                        id="targetWeight"
+                        type="number"
+                        min={1}
+                        step={0.1}
+                        className="mt-1.5"
+                        value={formData.targetWeight === "" ? "" : formData.targetWeight}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            targetWeight: e.target.value === "" ? "" : +e.target.value,
+                          })
+                        }
+                        placeholder="Ex.: 72"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="targetMonths">Em quanto tempo deseja atingir essa meta? (meses)</Label>
+                      <Input
+                        id="targetMonths"
+                        type="number"
+                        min={1}
+                        max={120}
+                        className="mt-1.5"
+                        value={formData.targetTimelineMonths === "" ? "" : formData.targetTimelineMonths}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            targetTimelineMonths: e.target.value === "" ? "" : +e.target.value,
+                          })
+                        }
+                        placeholder="Ex.: 6"
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   {ALLERGY_OPTIONS.map((allergy) => (
                     <button

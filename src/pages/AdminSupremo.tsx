@@ -1,4 +1,12 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useScroll,
+  useTransform,
+  useSpring,
+  useInView,
+} from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -26,6 +34,14 @@ import LeadHunterCRM from "@/components/admin/LeadHunterCRM";
 import { Radar } from "lucide-react";
 import type { DietPlan } from "@/services/n8nService";
 import { blogAuthorBylineFromProfile } from "@/lib/utils";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+} from "recharts";
 
 type Profile = any;
 type Transaction = any;
@@ -33,13 +49,60 @@ type DietRequest = any;
 
 const SUPREME_EMAIL = "helena.gaby31@gmail.com";
 
-const adminShell = "dark min-h-screen bg-[hsl(162,25%,4%)] text-[hsl(var(--ink-1))]";
+const TITLE_WORDS = ["Admin", "Supremo"] as const;
+
+const adminShell =
+  "dark min-h-screen bg-[hsl(162_28%_4%)] text-[hsl(var(--ink-1))]";
+
+function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true });
+  const spring = useSpring(0, { stiffness: 80, damping: 20 });
+  const display = useTransform(spring, (v) => {
+    const f =
+      decimals <= 0
+        ? Math.round(v)
+        : Math.round(v * 10 ** decimals) / 10 ** decimals;
+    return f.toLocaleString("pt-BR", {
+      minimumFractionDigits: decimals > 0 ? decimals : 0,
+      maximumFractionDigits: decimals,
+    });
+  });
+  useEffect(() => {
+    if (isInView) spring.set(value);
+  }, [isInView, value, spring]);
+  return (
+    <motion.span ref={ref} className="tabular-nums">
+      {display}
+    </motion.span>
+  );
+}
+
+const MotionTableRow = motion(TableRow);
+
+const kpiContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const kpiItemVariants = {
+  hidden: { opacity: 0, y: 20, scale: 0.96 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { ease: [0.16, 1, 0.3, 1] as const, duration: 0.45 },
+  },
+};
 
 const thControl =
   "bg-[hsl(var(--surface-2))] font-display text-[11px] font-semibold uppercase tracking-widest text-[hsl(var(--ink-2))] text-left border-b border-[hsl(var(--surface-3))] h-10 px-3";
 
 const trStriped = (i: number) =>
-  [i % 2 === 0 ? "bg-[hsl(var(--surface-0))]" : "bg-[hsl(var(--surface-1))]", "border-[hsl(var(--surface-3))] transition-colors hover:bg-[hsl(var(--primary)/0.06)]"].join(" ");
+  [i % 2 === 0 ? "bg-[hsl(var(--surface-0))]" : "bg-[hsl(var(--surface-1))]", "border-[hsl(var(--surface-3))]"].join(" ");
 
 const headerRow = "border-[hsl(var(--surface-3))] hover:bg-transparent";
 
@@ -65,7 +128,23 @@ function roleLabelForAdmin(role: string) {
   return "Cliente";
 }
 
-const cardSupreme = "card-clinical border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] shadow-sm";
+function RoleBadgeSpring({ role }: { role: string }) {
+  return (
+    <motion.div
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 500, damping: 22 }}
+      className="inline-flex"
+    >
+      <Badge variant="outline" className={roleBadgeForAdmin(role)}>
+        {roleLabelForAdmin(role)}
+      </Badge>
+    </motion.div>
+  );
+}
+
+const cardSupreme =
+  "card-clinical card-scan border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] shadow-sm";
 
 const dangerActionWrap = "rounded-xl border border-dashed border-red-800/40 bg-red-950/20 p-4";
 
@@ -228,6 +307,29 @@ export default function AdminSupremo() {
       t.id.includes(transactionSearch)
     ), [transactions, transactionSearch]);
 
+  const txChartData = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach((t: Transaction) => {
+      const d = new Date(t.created_at);
+      const key = d.toISOString().slice(0, 10);
+      map.set(key, (map.get(key) ?? 0) + Math.abs(Number(t.amount) || 0));
+    });
+    const out: { day: string; volume: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      out.push({
+        day: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+        volume: map.get(key) ?? 0,
+      });
+    }
+    return out;
+  }, [transactions]);
+
+  const { scrollY } = useScroll();
+  const gridOpacity = useTransform(scrollY, [0, 500], [0.2, 0.08]);
+
   const nutritionists = allUsers.filter(p => p.role === "nutritionist");
   const clients = allUsers.filter(p => p.role === "client");
   const completedCount = dietRequests.filter(d => d.status === "completed").length;
@@ -235,14 +337,68 @@ export default function AdminSupremo() {
 
   if (loading || !isSupremeAdmin) {
     return (
-      <div className={`${adminShell} flex min-h-screen items-center justify-center`}>
-        <Crown className="h-8 w-8 text-primary animate-pulse" />
-      </div>
+      <motion.div
+        className={`${adminShell} relative flex min-h-screen items-center justify-center`}
+        style={{ colorScheme: "dark" }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div
+          className="pointer-events-none absolute inset-0 bg-grid opacity-20 [background-image:linear-gradient(hsl(158_35%_22%_/_0.35)_1px,transparent_1px),linear-gradient(90deg,hsl(158_35%_22%_/_0.35)_1px,transparent_1px)]"
+          aria-hidden
+        />
+        <Crown className="relative z-10 h-8 w-8 text-primary animate-pulse" />
+      </motion.div>
     );
   }
 
   return (
-    <div className={adminShell}>
+    <motion.div
+      className={`${adminShell} relative min-h-screen`}
+      style={{ colorScheme: "dark" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+    >
+      <motion.div
+        className="pointer-events-none fixed top-0 left-0 right-0 z-[999]"
+        style={{
+          height: "2px",
+          background: "linear-gradient(90deg, transparent, hsl(158 80% 55%), transparent)",
+          boxShadow: "0 0 20px hsl(158 80% 55% / 0.8)",
+        }}
+        animate={{ x: ["-100%", "100%"] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", repeatDelay: 8 }}
+      />
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
+        <motion.div
+          className="bg-grid absolute inset-0"
+          style={{
+            opacity: gridOpacity,
+            backgroundImage:
+              "linear-gradient(hsl(158 35% 22% / 0.35) 1px, transparent 1px), linear-gradient(90deg, hsl(158 35% 22% / 0.35) 1px, transparent 1px)",
+          }}
+        />
+        <div className="absolute inset-0 bg-[hsl(158_40%_12%_/_0.06)]" />
+        <div
+          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[hsl(158_80%_55%_/_0.22)] to-transparent"
+          style={{
+            top: "22%",
+            animation: "scanLine 11s ease-in-out infinite",
+            animationDelay: "1.5s",
+          }}
+        />
+        <div
+          className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-[hsl(158_80%_55%_/_0.15)] to-transparent"
+          style={{
+            top: "58%",
+            animation: "scanLine 13s ease-in-out infinite",
+            animationDelay: "6s",
+          }}
+        />
+      </div>
+
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-[hsl(var(--surface-3))] bg-[hsl(162,22%,6%)]/95 px-4 py-3 backdrop-blur-md md:px-6">
         <button
           type="button"
@@ -250,9 +406,36 @@ export default function AdminSupremo() {
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left md:gap-3"
         >
           <Crown className="h-5 w-5 shrink-0 text-primary" />
-          <h1 className="font-display text-lg font-extrabold leading-none tracking-[-0.04em] text-[hsl(var(--ink-1))] min-[400px]:text-xl">
-            Admin Supremo
-          </h1>
+          <motion.div
+            className="flex min-w-0 flex-wrap items-baseline gap-x-2"
+            whileHover={{
+              textShadow: [
+                "0 0 0 transparent",
+                "2px 0 0 hsl(0 80% 55% / 0.5), -2px 0 0 hsl(217 85% 55% / 0.5)",
+                "0 0 0 transparent",
+              ],
+              transition: { duration: 0.3 },
+            }}
+          >
+            <h1 className="font-display flex flex-wrap items-baseline gap-x-2 text-lg font-extrabold leading-none tracking-[-0.04em] text-[hsl(var(--ink-1))] min-[400px]:text-xl">
+              {TITLE_WORDS.map((word, i) => (
+                <span key={`${word}-${i}`} className="inline-block overflow-hidden pb-0.5">
+                  <motion.span
+                    className="inline-block"
+                    initial={{ y: "110%", opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{
+                      delay: 0.08 + i * 0.11,
+                      duration: 0.55,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                  >
+                    {word}
+                  </motion.span>
+                </span>
+              ))}
+            </h1>
+          </motion.div>
           <Badge
             className="hidden border border-red-800 bg-red-950 text-[0.7rem] font-bold uppercase leading-none text-red-300 sm:inline-flex"
             variant="outline"
@@ -287,7 +470,7 @@ export default function AdminSupremo() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl p-4 md:p-6">
+      <div className="relative z-10 mx-auto max-w-7xl p-4 md:p-6">
         <div className="mb-6 flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
           <p className="max-w-2xl font-mono text-[11px] font-normal uppercase tracking-[0.2em] text-[hsl(var(--ink-3))]">
             Nódulo de controle · acesso level supremo
@@ -301,79 +484,121 @@ export default function AdminSupremo() {
           </div>
         </div>
 
-        {devMode && (
-          <div className="mb-6 flex items-center gap-3 rounded-lg border-2 border-primary/30 bg-primary/5 p-4">
-            <FlaskConical className="h-5 w-5 flex-shrink-0 text-primary" />
-            <div>
-              <p className="font-display text-sm font-bold text-[hsl(var(--ink-1))]">
-                🧪 God Mode ativo — CRN bypass + controle total
-              </p>
-              <p className="text-xs text-[hsl(var(--ink-3))]">
-                Simule validações, adicione moedas, marque dietas como concluídas e teste todo o fluxo sem restrições.
-              </p>
-            </div>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {devMode && (
+            <motion.div
+              key="god-banner"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="mb-6 overflow-hidden"
+            >
+              <div className="flex items-center gap-3 rounded-lg border-2 border-primary/30 bg-primary/5 p-4">
+                <FlaskConical className="h-5 w-5 flex-shrink-0 text-primary" />
+                <div>
+                  <p className="font-display text-sm font-bold text-[hsl(var(--ink-1))]">
+                    🧪 God Mode ativo — CRN bypass + controle total
+                  </p>
+                  <p className="text-xs text-[hsl(var(--ink-3))]">
+                    Simule validações, adicione moedas, marque dietas como concluídas e teste todo o fluxo sem restrições.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {devMode && (
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Button
-              variant="outline"
-              className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
-              onClick={() => navigate("/?as=client")}
+        <AnimatePresence initial={false}>
+          {devMode && (
+            <motion.div
+              key="god-nav"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3"
             >
-              <User className="h-4 w-4 text-primary" />
-              Ver visão do cliente
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
-              onClick={() => navigate("/?as=nutritionist")}
-            >
-              <Stethoscope className="h-4 w-4 text-primary" />
-              Ver visão do nutricionista
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
-              onClick={() => navigate("/personal-dashboard")}
-            >
-              <Dumbbell className="h-4 w-4 text-primary" />
-              Ver visão do personal
-            </Button>
-          </div>
-        )}
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/?as=client")}
+              >
+                <User className="h-4 w-4 text-primary" />
+                Ver visão do cliente
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/?as=nutritionist")}
+              >
+                <Stethoscope className="h-4 w-4 text-primary" />
+                Ver visão do nutricionista
+              </Button>
+              <Button
+                variant="outline"
+                className="h-12 gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))] hover:border-primary/40 hover:bg-primary/10"
+                onClick={() => navigate("/personal-dashboard")}
+              >
+                <Dumbbell className="h-4 w-4 text-primary" />
+                Ver visão do personal
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Card className={cardSupreme}>
-            <CardContent className="p-6">
-              <DollarSign className="mb-2 h-6 w-6 text-primary/80" />
-              <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Receita total</p>
-              <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">R$ {(completedCount * 39.9).toFixed(2)}</p>
-            </CardContent>
-          </Card>
-          <Card className={cardSupreme}>
-            <CardContent className="p-6">
-              <Stethoscope className="mb-2 h-6 w-6 text-primary/80" />
-              <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Nutricionistas</p>
-              <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">{nutritionists.length}</p>
-            </CardContent>
-          </Card>
-          <Card className={cardSupreme}>
-            <CardContent className="p-6">
-              <Users className="mb-2 h-6 w-6 text-primary/80" />
-              <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Clientes</p>
-              <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">{clients.length}</p>
-            </CardContent>
-          </Card>
-          <Card className={cardSupreme}>
-            <CardContent className="p-6">
-              <AlertTriangle className="mb-2 h-6 w-6 text-[hsl(var(--coin-gold))]/90" />
-              <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Pendentes</p>
-              <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">{pendingCount}</p>
-            </CardContent>
-          </Card>
-        </div>
+        <motion.div
+          className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4"
+          variants={kpiContainerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+        >
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <DollarSign className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Receita total</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  R$ <AnimatedNumber value={completedCount * 39.9} decimals={2} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <Stethoscope className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Nutricionistas</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={nutritionists.length} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <Users className="mb-2 h-6 w-6 text-primary/80" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Clientes</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={clients.length} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+          <motion.div variants={kpiItemVariants}>
+            <Card className={cardSupreme}>
+              <CardContent className="p-6">
+                <AlertTriangle className="mb-2 h-6 w-6 text-[hsl(var(--coin-gold))]/90" />
+                <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Pendentes</p>
+                <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                  <AnimatedNumber value={pendingCount} />
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
 
         <Tabs defaultValue="audit" className="space-y-4">
           <TabsList className="flex w-full flex-wrap gap-0.5 border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1.5">
@@ -475,12 +700,15 @@ export default function AdminSupremo() {
                           p.role === "nutritionist" ? d.nutritionist_id === p.user_id : d.client_id === p.user_id
                         );
                         return (
-                          <TableRow key={p.id} className={trStriped(rowIdx)}>
+                          <MotionTableRow
+                            key={p.id}
+                            className={trStriped(rowIdx)}
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
+                          >
                             <TableCell className="px-3 font-medium text-[hsl(var(--ink-1))]">{p.full_name || "—"}</TableCell>
                             <TableCell className="px-3">
-                              <Badge variant="outline" className={roleBadgeForAdmin(p.role)}>
-                                {roleLabelForAdmin(p.role)}
-                              </Badge>
+                              <RoleBadgeSpring role={p.role} />
                             </TableCell>
                             <TableCell className="px-3 text-[hsl(var(--ink-2))]">{p.crn_number || "—"}</TableCell>
                             <TableCell className="px-3">
@@ -544,7 +772,7 @@ export default function AdminSupremo() {
                                 </div>
                               )}
                             </TableCell>
-                          </TableRow>
+                          </MotionTableRow>
                         );
                       })}
                       {allUsers.length === 0 && (
@@ -598,20 +826,29 @@ export default function AdminSupremo() {
                         const hours = getHoursPending(req.created_at);
                         const isUrgent = req.status === "pending" && hours >= 18;
                         return (
-                          <TableRow
+                          <MotionTableRow
                             key={req.id}
                             className={
                               isUrgent
-                                ? "border-[hsl(var(--surface-3))] bg-destructive/10 transition-colors hover:bg-destructive/12"
+                                ? "border-[hsl(var(--surface-3))] bg-destructive/10"
                                 : trStriped(rowIdx)
                             }
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
                           >
                             <TableCell className="px-3 font-mono text-xs text-[hsl(var(--ink-2))]">{req.id.slice(0, 8)}</TableCell>
                             <TableCell className="px-3">
-                              <Badge variant={req.status === "completed" ? "default" : req.status === "in_review" ? "secondary" : "outline"}
-                                className={req.status === "pending" ? "border-[hsl(38,92%,50%)] text-[hsl(38,92%,50%)]" : ""}>
-                                {req.status === "pending" ? "Pendente" : req.status === "in_review" ? "Em Revisão" : "Concluído"}
-                              </Badge>
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                className="inline-flex"
+                              >
+                                <Badge variant={req.status === "completed" ? "default" : req.status === "in_review" ? "secondary" : "outline"}
+                                  className={req.status === "pending" ? "border-[hsl(38,92%,50%)] text-[hsl(38,92%,50%)]" : ""}>
+                                  {req.status === "pending" ? "Pendente" : req.status === "in_review" ? "Em Revisão" : "Concluído"}
+                                </Badge>
+                              </motion.div>
                             </TableCell>
                             <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{new Date(req.created_at).toLocaleString("pt-BR")}</TableCell>
                             <TableCell className="px-3">
@@ -620,7 +857,16 @@ export default function AdminSupremo() {
                               ) : "—"}
                             </TableCell>
                             <TableCell className="px-3">
-                              {isUrgent && <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />SLA 24h</Badge>}
+                              {isUrgent && (
+                                <motion.div
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                  className="inline-flex"
+                                >
+                                  <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />SLA 24h</Badge>
+                                </motion.div>
+                              )}
                             </TableCell>
                              <TableCell className="px-3">
                               <div className="flex flex-wrap items-center gap-2">
@@ -635,19 +881,26 @@ export default function AdminSupremo() {
                                   <>
                                     <Button size="sm" variant="outline"
                                       className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
-                                      onClick={() => { setSimRequest(req); setSimOpen(true); }}>
+                                      onClick={() => {
+                                        toast.info("Abrindo simulação do fluxo…", { duration: 1800 });
+                                        setSimRequest(req);
+                                        setSimOpen(true);
+                                      }}>
                                       <Eye className="h-3 w-3" /> Testar Fluxo
                                     </Button>
                                     <Button size="sm" variant="outline"
                                       className="gap-1 border-primary/30 text-primary hover:bg-primary/10 text-xs"
-                                      onClick={() => markDietCompleted(req)}>
+                                      onClick={() => {
+                                        toast.info("Enviando validação da dieta…", { duration: 1800 });
+                                        void markDietCompleted(req);
+                                      }}>
                                       <CheckCircle2 className="h-3 w-3" /> Validar
                                     </Button>
                                   </>
                                 )}
                               </div>
                             </TableCell>
-                          </TableRow>
+                          </MotionTableRow>
                         );
                       })}
                       {filteredDiets.length === 0 && (
@@ -671,25 +924,56 @@ export default function AdminSupremo() {
                 <Card className={cardSupreme}>
                   <CardContent className="p-6 text-center">
                     <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Receita bruta</p>
-                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">R$ {(completedCount * 39.9).toFixed(2)}</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                      R$ <AnimatedNumber value={completedCount * 39.9} decimals={2} />
+                    </p>
                     <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 39,90 / plano</p>
                   </CardContent>
                 </Card>
                 <Card className={cardSupreme}>
                   <CardContent className="p-6 text-center">
                     <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Pendente p/ nutris</p>
-                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-destructive">R$ {(completedCount * 15).toFixed(2)}</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-destructive">
+                      R$ <AnimatedNumber value={completedCount * 15} decimals={2} />
+                    </p>
                     <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 15 / validação</p>
                   </CardContent>
                 </Card>
                 <Card className={cardSupreme}>
                   <CardContent className="p-6 text-center">
                     <p className="text-[11px] font-sans font-normal uppercase tracking-widest text-[hsl(var(--ink-3))]">Lucro plataforma</p>
-                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">R$ {(completedCount * 24.9).toFixed(2)}</p>
+                    <p className="mt-1 font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                      R$ <AnimatedNumber value={completedCount * 24.9} decimals={2} />
+                    </p>
                     <p className="mt-1 text-xs text-[hsl(var(--ink-3))]">R$ 24,90 / plano</p>
                   </CardContent>
                 </Card>
               </div>
+
+              <Card className={cardSupreme}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="font-display text-sm text-[hsl(var(--ink-2))]">
+                    Volume de movimentações (14 dias)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="h-[220px] pt-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={txChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(158 40% 20%)" />
+                      <XAxis dataKey="day" tick={{ fill: "hsl(var(--ink-3))", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "hsl(var(--ink-3))", fontSize: 10 }} width={36} />
+                      <Area
+                        type="monotone"
+                        dataKey="volume"
+                        stroke="hsl(158 80% 55%)"
+                        fill="hsl(158 72% 32% / 0.2)"
+                        isAnimationActive
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
 
               <Card className={cardSupreme}>
                 <CardHeader className="pb-3">
@@ -721,12 +1005,33 @@ export default function AdminSupremo() {
                       </TableHeader>
                       <TableBody>
                         {filteredTransactions.map((t, rowIdx) => (
-                          <TableRow key={t.id} className={trStriped(rowIdx)}>
+                          <MotionTableRow
+                            key={t.id}
+                            className={trStriped(rowIdx)}
+                            whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                            transition={{ duration: 0.1 }}
+                          >
                             <TableCell className="px-3 font-mono text-xs text-[hsl(var(--ink-2))]">{t.id.slice(0, 8)}</TableCell>
                             <TableCell className="px-3">
-                              <Badge variant="outline" className="border-[hsl(var(--surface-3))] text-[hsl(var(--ink-1))]">
-                                {t.type === "credit_purchase" ? "Compra" : t.type === "job_acceptance" ? "Aceite" : "Reembolso"}
-                              </Badge>
+                              <motion.div
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                                className="inline-flex"
+                              >
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    t.type === "credit_purchase"
+                                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                                      : t.type === "job_acceptance"
+                                        ? "border-blue-500/50 bg-blue-500/10 text-blue-200"
+                                        : "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                                  }
+                                >
+                                  {t.type === "credit_purchase" ? "Compra" : t.type === "job_acceptance" ? "Aceite" : "Reembolso"}
+                                </Badge>
+                              </motion.div>
                             </TableCell>
                             <TableCell className={`px-3 font-medium ${t.amount >= 0 ? "text-primary" : "text-destructive"}`}>
                               {t.amount >= 0 ? "+" : ""}{t.amount}
@@ -740,7 +1045,7 @@ export default function AdminSupremo() {
                             </TableCell>
                             <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{t.description || "—"}</TableCell>
                             <TableCell className="px-3 text-xs text-[hsl(var(--ink-2))]">{new Date(t.created_at).toLocaleDateString("pt-BR")}</TableCell>
-                          </TableRow>
+                          </MotionTableRow>
                         ))}
                         {filteredTransactions.length === 0 && (
                           <TableRow className="border-[hsl(var(--surface-3))]">
@@ -783,13 +1088,25 @@ export default function AdminSupremo() {
                     </TableHeader>
                     <TableBody>
                       {nutritionists.map((p, rowIdx) => (
-                        <TableRow key={p.id} className={trStriped(rowIdx)}>
+                        <MotionTableRow
+                          key={p.id}
+                          className={trStriped(rowIdx)}
+                          whileHover={{ backgroundColor: "hsl(158 72% 32% / 0.08)", x: 2 }}
+                          transition={{ duration: 0.1 }}
+                        >
                           <TableCell className="px-3 font-medium text-[hsl(var(--ink-1))]">{p.full_name || "—"}</TableCell>
                           <TableCell className="px-3 font-mono text-sm text-[hsl(var(--ink-1))]">{p.crn_number || "Não informado"}</TableCell>
                           <TableCell className="px-3">
-                            <Badge variant={p.approved ? "default" : "destructive"} className="text-xs">
-                              {p.approved ? "Aprovado" : "Pendente"}
-                            </Badge>
+                            <motion.div
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                              className="inline-flex"
+                            >
+                              <Badge variant={p.approved ? "default" : "destructive"} className="text-xs">
+                                {p.approved ? "Aprovado" : "Pendente"}
+                              </Badge>
+                            </motion.div>
                           </TableCell>
                           <TableCell className="px-3">
                             {crnVerifying[p.id] ? (
@@ -825,7 +1142,7 @@ export default function AdminSupremo() {
                               Verificar com IA
                             </Button>
                           </TableCell>
-                        </TableRow>
+                        </MotionTableRow>
                       ))}
                       {nutritionists.length === 0 && (
                         <TableRow className="border-[hsl(var(--surface-3))]">
@@ -1160,6 +1477,6 @@ export default function AdminSupremo() {
       </Dialog>
 
       <PlansModal open={plansModalOpen} onOpenChange={setPlansModalOpen} currentTier="clinic" />
-    </div>
+    </motion.div>
   );
 }

@@ -11,6 +11,10 @@ export interface ClientData {
   allergies: string[];
   activityLevel: string;
   additionalNotes?: string;
+  /** Peso alvo (kg) — perda/ganho de peso. */
+  targetWeight?: number;
+  /** Prazo em meses para a meta de composição. */
+  targetTimelineMonths?: number;
 }
 
 export interface Meal {

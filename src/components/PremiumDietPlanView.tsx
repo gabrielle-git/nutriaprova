@@ -21,9 +21,9 @@ interface PremiumDietPlanViewProps {
   specialty?: string;
   signatureStyle?: "modern" | "classic" | "minimal";
   isCompleted?: boolean;
-  /** White-label: clinic logo URL (only rendered for Plano Clínica nutritionists). */
+  /** White-label: clinic logo URL (Premium / Clínica). */
   clinicLogoUrl?: string | null;
-  /** Tier of the validating professional. White-label only renders when "clinic". */
+  /** Tier do profissional validador — logo quando premium ou clínica. */
   professionalTier?: string | null;
 }
 
@@ -51,7 +51,9 @@ export default function PremiumDietPlanView({
     );
   }
 
-  const showClinicLogo = professionalTier === "clinic" && !!clinicLogoUrl;
+  const showClinicLogo =
+    (professionalTier === "clinic" || professionalTier === "premium") &&
+    !!clinicLogoUrl;
   const meals = Object.values(plan.meals ?? {});
   const totalProtein = meals.reduce((s, m) => s + (m?.protein ?? 0), 0);
   const totalCarbs = meals.reduce((s, m) => s + (m?.carbs ?? 0), 0);

@@ -16,11 +16,19 @@ interface CheckoutModalProps {
   onOpenChange: (v: boolean) => void;
   amount?: number;
   onApproved?: () => void;
+  /** Quando definido, textos refletem assinatura de plano (ex.: /planos) em vez do fluxo cardápio. */
+  planLabel?: string | null;
 }
 
 const PIX_CODE = "00020126830014BR.GOV.BCB.PIX0136nutrIAprova-mock-uuid-39905204000053039865802BR5925nutrIAprova TECNOLOGIA LT6009SAO PAULO62070503***6304ABCD";
 
-export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApproved }: CheckoutModalProps) {
+export default function CheckoutModal({
+  open,
+  onOpenChange,
+  amount = 39.9,
+  onApproved,
+  planLabel = null,
+}: CheckoutModalProps) {
   const { user } = useAuth();
   const [processing, setProcessing] = useState(false);
 
@@ -37,8 +45,10 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
 
   const simulateApproval = async () => {
     setProcessing(true);
-    // Mock: avanço do funil após pagamento (processing -> pending/in_review do nutri).
-    if (user) {
+    const isSubscription = Boolean(planLabel);
+
+    // Mock: fluxo cardápio (cliente) — não altera diet_requests em checkout de assinatura de plano.
+    if (user && !isSubscription) {
       const { data: latest } = await supabase
         .from("diet_requests")
         .select("id, status")
@@ -52,7 +62,6 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
           .update({ status: "processing", notes: "Pagamento aprovado (simulado). Processando IA." } as any)
           .eq("id", id);
 
-        // Simula o avanço do processamento para etapa de validação nutricional.
         setTimeout(async () => {
           await supabase
             .from("diet_requests")
@@ -61,10 +70,6 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
         }, 3000);
       }
 
-      // Registra conversão no painel de Performance de Convites: se o cliente
-      // foi referenciado por algum profissional (profiles.referred_by → user_id
-      // do afiliado), buscamos o affiliate_code correspondente e contabilizamos
-      // a venda com o valor efetivamente pago.
       try {
         const { data: clientProfile } = await (supabase as any)
           .from("profiles")
@@ -91,13 +96,16 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
           }
         }
       } catch (err) {
-        // Analytics é opcional; nunca travar o checkout por causa disso.
         console.warn("[CheckoutModal] sale tracking:", err);
       }
     }
     setTimeout(() => {
       setProcessing(false);
-      toast.success("Pagamento aprovado! Sua dieta entrou em processamento.");
+      toast.success(
+        isSubscription
+          ? `Pagamento aprovado! Plano ${planLabel} será ativado em instantes.`
+          : "Pagamento aprovado! Sua dieta entrou em processamento.",
+      );
       onApproved?.();
       onOpenChange(false);
     }, 1200);
@@ -109,10 +117,13 @@ export default function CheckoutModal({ open, onOpenChange, amount = 39.9, onApp
         <div className="emerald-gradient px-6 py-5 text-primary-foreground">
           <DialogHeader>
             <DialogTitle className="text-primary-foreground font-display text-xl flex items-center gap-2">
-              <Shield className="h-5 w-5" /> Checkout Seguro
+              <Shield className="h-5 w-5" />{" "}
+              {planLabel ? `Assinatura · ${planLabel}` : "Checkout Seguro"}
             </DialogTitle>
             <DialogDescription className="text-primary-foreground/80">
-              Plano Validado por Nutricionista — pagamento único.
+              {planLabel
+                ? "Confirme o pagamento para ativar seu plano na nutrIAprova (ambiente de teste)."
+                : "Plano Validado por Nutricionista — pagamento único."}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 flex items-end justify-between">

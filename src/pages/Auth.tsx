@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft, Check, Dumbbell, Leaf, Stethoscope, User, Loader2,
 } from "lucide-react";
@@ -36,36 +36,101 @@ const BRAND_TESTIMONIAL = {
   avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=120&h=120&fit=crop",
 } as const;
 
+const BRAND_TITLE_WORDS = ["NutrI", "Aprova"] as const;
+
 function BrandingPanel() {
+  const bullets = [
+    "Plano alimentar gerado por IA em segundos",
+    "Acompanhamento real com seu nutricionista",
+    "Resultados comprovados por +2.000 usuários",
+  ];
+
   return (
-    <aside className="bg-hero text-[hsl(var(--ink-1))] relative hidden w-[45%] min-h-screen flex-col justify-between p-10 md:flex">
-      <div>
+    <motion.div
+      initial={{ opacity: 0, x: -60 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+      className="bg-aurora bg-grid relative hidden min-h-screen w-[45%] flex-col justify-between overflow-hidden p-10 text-[hsl(var(--ink-1))] md:flex"
+    >
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -left-32 -top-32 h-[420px] w-[420px] rounded-full"
+        style={{ background: "radial-gradient(circle, hsl(158 72% 32% / 0.22) 0%, transparent 65%)" }}
+        animate={{ scale: [1, 1.12, 1], x: [0, 24, 0], y: [0, -16, 0] }}
+        transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -right-24 top-1/3 h-[320px] w-[320px] rounded-full"
+        style={{ background: "radial-gradient(circle, hsl(172 60% 38% / 0.16) 0%, transparent 65%)" }}
+        animate={{ scale: [1, 1.08, 1], x: [0, -18, 0] }}
+        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute bottom-20 left-1/4 h-[280px] w-[280px] rounded-full"
+        style={{ background: "radial-gradient(circle, hsl(142 55% 28% / 0.12) 0%, transparent 68%)" }}
+        animate={{ scale: [1, 1.1, 1], opacity: [0.7, 1, 0.7] }}
+        transition={{ duration: 13, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+      />
+
+      <div className="relative z-10">
         <div className="flex items-center gap-2.5">
           <Leaf className="h-9 w-9 shrink-0 text-primary" strokeWidth={1.75} />
-          <span className="font-display text-[2.5rem] font-extrabold leading-tight text-brand">
-            NutrIAprova
-          </span>
+          <h1 className="font-display text-[2.5rem] font-extrabold leading-tight">
+            {BRAND_TITLE_WORDS.map((word, i) => (
+              <span key={word} className="inline-block overflow-hidden align-bottom" style={{ marginRight: "0.18em" }}>
+                <motion.span
+                  className={
+                    word === "Aprova"
+                      ? "inline-block text-brand-animated"
+                      : "inline-block text-[hsl(var(--ink-1))]"
+                  }
+                  initial={{ y: "110%", opacity: 0, skewY: 3 }}
+                  animate={{ y: "0%", opacity: 1, skewY: 0 }}
+                  transition={{ duration: 0.65, delay: 0.06 + i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {word}
+                </motion.span>
+              </span>
+            ))}
+          </h1>
         </div>
         <p className="mt-2 max-w-sm font-sans text-base font-normal text-[hsl(var(--ink-2))]">
           Nutrição clínica com inteligência artificial e validação humana.
         </p>
         <div className="my-8 h-px w-full max-w-sm bg-[hsl(var(--surface-3))]" />
         <ul className="max-w-sm space-y-3">
-          {[
-            "Plano alimentar gerado por IA em segundos",
-            "Acompanhamento real com seu nutricionista",
-            "Resultados comprovados por +2.000 usuários",
-          ].map((line) => (
-            <li key={line} className="flex gap-2.5 font-sans text-sm font-normal text-[hsl(var(--ink-2))]">
+          {bullets.map((line, index) => (
+            <motion.li
+              key={line}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.4 + index * 0.1 }}
+              whileHover={{ x: 4 }}
+              className="flex gap-2.5 font-sans text-sm font-normal text-[hsl(var(--ink-2))]"
+            >
               <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden />
               <span>{line}</span>
-            </li>
+            </motion.li>
           ))}
         </ul>
       </div>
-      <figure className="mt-8 rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]/60 p-4 backdrop-blur-sm">
-        <blockquote className="font-sans text-sm leading-relaxed text-[hsl(var(--ink-2))]">
-          “{BRAND_TESTIMONIAL.quote}”
+
+      <motion.figure
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.9 }}
+        className="relative z-10 mt-8 rounded-[var(--radius)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]/60 p-4 pt-8 backdrop-blur-sm"
+      >
+        <span
+          className="pointer-events-none absolute left-2 top-0 font-serif text-[4.5rem] leading-none text-[hsl(var(--primary)_/_0.1)]"
+          aria-hidden
+        >
+          &ldquo;
+        </span>
+        <blockquote className="relative z-[1] font-sans text-sm leading-relaxed text-[hsl(var(--ink-2))]">
+          {BRAND_TESTIMONIAL.quote}
         </blockquote>
         <figcaption className="mt-3 flex items-center gap-3">
           <img
@@ -76,16 +141,97 @@ function BrandingPanel() {
             height={44}
           />
           <div>
-            <p className="font-sans text-sm font-semibold text-[hsl(var(--ink-1))]">
-              {BRAND_TESTIMONIAL.name}
-            </p>
-            <p className="font-sans text-xs text-[hsl(var(--ink-3))]">
-              {BRAND_TESTIMONIAL.role}
-            </p>
+            <p className="font-sans text-sm font-semibold text-[hsl(var(--ink-1))]">{BRAND_TESTIMONIAL.name}</p>
+            <p className="font-sans text-xs text-[hsl(var(--ink-3))]">{BRAND_TESTIMONIAL.role}</p>
           </div>
         </figcaption>
-      </figure>
-    </aside>
+      </motion.figure>
+    </motion.div>
+  );
+}
+
+function FormParticles() {
+  return (
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+      {Array.from({ length: 12 }, (_, i) => (
+        <motion.span
+          key={i}
+          className={cn(
+            "absolute rounded-full",
+            i % 2 === 0 ? "h-2 w-2" : "h-1 w-1",
+          )}
+          style={{
+            left: `${(i * 17 + 7) % 92}%`,
+            bottom: `${8 + (i * 11) % 35}%`,
+            backgroundColor: "hsl(var(--primary-glow) / 0.15)",
+          }}
+          animate={{
+            y: [0, -200],
+            opacity: [0, 0.6, 0],
+          }}
+          transition={{
+            duration: 6 + (i % 7),
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.35,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+type AuthAnimatedFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  children: (fieldProps: { onFocus: () => void; onBlur: () => void; className: string }) => React.ReactNode;
+};
+
+function AuthAnimatedField({ id, label, value, children }: AuthAnimatedFieldProps) {
+  const [focused, setFocused] = useState(false);
+  const hasValue = value.trim().length > 0;
+
+  const fieldClass = cn(authInputClassName, "relative z-[1] bg-transparent pt-5");
+
+  return (
+    <div className="relative">
+      <motion.div
+        animate={focused ? { scale: 1.01 } : { scale: 1 }}
+        transition={{ duration: 0.15 }}
+        className="relative rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-background shadow-sm"
+      >
+        <motion.label
+          htmlFor={id}
+          className="pointer-events-none absolute left-3 top-[13px] z-[2] block origin-left font-sans text-[13px] font-medium"
+          animate={
+            focused || hasValue
+              ? { y: -4, scale: 0.85, color: "hsl(var(--primary))" }
+              : { y: 0, scale: 1, color: "hsl(var(--ink-2))" }
+          }
+          transition={{ duration: 0.15 }}
+        >
+          {label}
+        </motion.label>
+        {children({
+          onFocus: () => setFocused(true),
+          onBlur: () => setFocused(false),
+          className: cn(fieldClass, "border-0 shadow-none focus-visible:ring-0"),
+        })}
+        <motion.div
+          aria-hidden
+          className="absolute bottom-0 left-0 right-0 z-[2] rounded-full"
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: focused ? 1 : 0 }}
+          style={{
+            transformOrigin: "left",
+            height: "2px",
+            background: "linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary-glow)))",
+          }}
+          transition={{ duration: 0.2 }}
+        />
+      </motion.div>
+    </div>
   );
 }
 
@@ -148,8 +294,19 @@ export default function Auth() {
   const [loading, setLoading]           = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [emailServiceNotice, setEmailServiceNotice] = useState(false);
+  const [submitPulse, setSubmitPulse] = useState<null | "success" | "error">(null);
   const formSubmitLockRef = useRef(false);
   const googleClickLockRef = useRef(false);
+
+  useEffect(() => {
+    if (!submitPulse) return;
+    const t = window.setTimeout(() => setSubmitPulse(null), 1400);
+    return () => window.clearTimeout(t);
+  }, [submitPulse]);
+
+  useEffect(() => {
+    setSubmitPulse(null);
+  }, [isLogin, role]);
 
   // OTP
   const [otpCode, setOtpCode]           = useState("");
@@ -312,6 +469,7 @@ export default function Auth() {
       } else {
         toast.error(msg);
       }
+      setSubmitPulse("error");
     } finally {
       setLoading(false);
     }
@@ -345,9 +503,11 @@ export default function Auth() {
 
       if (error) throw new Error(error.message);
       toast.success("Verificação realizada com sucesso!");
+      setSubmitPulse("success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Código inválido ou expirado.";
       toast.error(msg);
+      setSubmitPulse("error");
     } finally {
       setLoading(false);
     }
@@ -394,6 +554,7 @@ export default function Auth() {
 
       clearPendingSignup();
       toast.success("Conta criada com sucesso!");
+      setSubmitPulse("success");
       navigate("/auth/callback", { replace: true });
       return;
     } catch (err: unknown) {
@@ -412,6 +573,7 @@ export default function Auth() {
       } else {
         toast.error(msg);
       }
+      setSubmitPulse("error");
     } finally {
       setLoading(false);
     }
@@ -419,6 +581,7 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitPulse(null);
     if (googleLoading) return;
     if (formSubmitLockRef.current) return;
     formSubmitLockRef.current = true;
@@ -428,6 +591,7 @@ export default function Auth() {
           setLoading(true);
           try {
             await signIn(email, password);
+            setSubmitPulse("success");
           } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : "Erro ao entrar";
             const low = msg.toLowerCase();
@@ -466,6 +630,7 @@ export default function Auth() {
             } else {
               toast.error("Não foi possível entrar", { description: msg });
             }
+            setSubmitPulse("error");
           } finally {
             setLoading(false);
           }
@@ -495,7 +660,13 @@ export default function Auth() {
     return (
       <div className="flex min-h-screen flex-col bg-background md:flex-row">
         <BrandingPanel />
-        <div className="flex min-h-screen w-full flex-1 items-center justify-center p-4 md:w-[55%]">
+        <motion.div
+          initial={{ opacity: 0, x: 60 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+          className="relative flex min-h-screen w-full flex-1 items-center justify-center p-4 md:w-[55%]"
+        >
+          <FormParticles />
           <button
             type="button"
             onClick={() => navigate(-1)}
@@ -506,7 +677,7 @@ export default function Auth() {
             Voltar
           </button>
           <motion.div
-            className="mx-auto w-full max-w-sm"
+            className="relative z-10 mx-auto w-full max-w-sm"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
@@ -589,7 +760,7 @@ export default function Auth() {
               </div>
             </div>
           </motion.div>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -599,7 +770,13 @@ export default function Auth() {
     <div className="flex min-h-screen flex-col bg-background md:flex-row">
       <BrandingPanel />
 
-      <div className="relative flex w-full min-h-screen flex-1 flex-col md:w-[55%]">
+      <motion.div
+        initial={{ opacity: 0, x: 60 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+        className="relative flex w-full min-h-screen flex-1 flex-col md:w-[55%]"
+      >
+        <FormParticles />
         <button
           type="button"
           onClick={() => navigate(-1)}
@@ -611,7 +788,7 @@ export default function Auth() {
         </button>
 
         <motion.div
-          className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-8 py-12"
+          className="relative z-10 mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-8 py-12"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
@@ -677,131 +854,152 @@ export default function Auth() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <AnimatePresence mode="wait" custom={isLogin}>
+              <AnimatePresence mode="wait">
                 <motion.div
-                  key={isLogin ? "login" : "signup"}
-                  custom={isLogin}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                  variants={{
-                    initial: (isL: boolean) => ({
-                      opacity: 0,
-                      x: isL ? 28 : -28,
-                    }),
-                    animate: { opacity: 1, x: 0 },
-                    exit: (isL: boolean) => ({
-                      opacity: 0,
-                      x: isL ? -28 : 28,
-                    }),
-                  }}
+                  key={`${role}${isLogin ? "login" : "signup"}`}
+                  initial={{ opacity: 0, y: 16, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -16, scale: 0.97 }}
+                  transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   className="space-y-4"
                 >
                   {!isLogin && (
                     <>
-                      <div>
-                        <Label className={authLabelClass} htmlFor="auth-fullname">
-                          Nome completo
-                        </Label>
-                        <Input
-                          id="auth-fullname"
-                          className={authInputClassName}
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                          placeholder="Como deseja ser chamado?"
-                          required
-                        />
-                      </div>
+                      <AuthAnimatedField id="auth-fullname" label="Nome completo" value={fullName}>
+                        {({ onFocus, onBlur, className }) => (
+                          <Input
+                            id="auth-fullname"
+                            className={className}
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            onFocus={onFocus}
+                            onBlur={onBlur}
+                            placeholder=""
+                            autoComplete="name"
+                            required
+                          />
+                        )}
+                      </AuthAnimatedField>
 
                       <div>
                         <span className={authLabelClass}>Perfil</span>
-                        <div className="mt-1 flex w-full gap-0.5 rounded-full bg-[hsl(var(--surface-2))] p-1">
+                        <div className="relative mt-1 flex w-full gap-0.5 rounded-full bg-[hsl(var(--surface-2))] p-1">
                           {[
                             { v: "client" as const, l: "Cliente", i: User },
                             { v: "nutritionist" as const, l: "Nutri", i: Stethoscope },
                             { v: "personal_trainer" as const, l: "Personal", i: Dumbbell },
-                          ].map((p) => (
-                            <button
-                              key={p.v}
-                              type="button"
-                              onClick={() => setRole(p.v)}
-                              className={cn(
-                                "flex flex-1 items-center justify-center gap-1 rounded-full py-2 font-sans text-[13px] font-medium transition-shadow",
-                                role === p.v
-                                  ? "bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))] shadow-sm dark:bg-[hsl(var(--surface-1))] dark:shadow-sm"
-                                  : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
-                              )}
-                            >
-                              <p.i className="h-3.5 w-3.5 shrink-0" />
-                              {p.l}
-                            </button>
-                          ))}
+                          ].map((p) => {
+                            const RIcon = p.i;
+                            return (
+                              <button
+                                key={p.v}
+                                type="button"
+                                onClick={() => setRole(p.v)}
+                                className={cn(
+                                  "relative z-0 flex flex-1 items-center justify-center gap-1 rounded-full py-2 font-sans text-[13px] font-medium transition-shadow",
+                                  role === p.v
+                                    ? "text-slate-900 dark:text-slate-900"
+                                    : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+                                )}
+                              >
+                                {role === p.v && (
+                                  <motion.div
+                                    layoutId="role-tab-bg"
+                                    className="absolute inset-0 z-0 rounded-full bg-white shadow-sm dark:bg-white"
+                                    transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                                  />
+                                )}
+                                <span className="relative z-10 flex items-center justify-center gap-1">
+                                  <RIcon
+                                    className={cn(
+                                      "h-3.5 w-3.5 shrink-0",
+                                      role === p.v && "text-slate-900 dark:text-slate-900",
+                                    )}
+                                  />
+                                  {p.l}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
                       {role === "nutritionist" && (
-                        <div>
-                          <Label className={authLabelClass} htmlFor="auth-crn">
-                            Registro CRN
-                          </Label>
-                          <Input
-                            id="auth-crn"
-                            className={authInputClassName}
-                            value={crnNumber}
-                            onChange={(e) => setCrnNumber(maskCRN(e.target.value))}
-                            placeholder="CRN-3 12345"
-                            required
-                          />
-                        </div>
+                        <AuthAnimatedField id="auth-crn" label="Registro CRN" value={crnNumber}>
+                          {({ onFocus, onBlur, className }) => (
+                            <Input
+                              id="auth-crn"
+                              className={className}
+                              value={crnNumber}
+                              onChange={(e) => setCrnNumber(maskCRN(e.target.value))}
+                              onFocus={onFocus}
+                              onBlur={onBlur}
+                              placeholder=""
+                              required
+                            />
+                          )}
+                        </AuthAnimatedField>
                       )}
                     </>
                   )}
 
-                  <div>
-                    <Label className={authLabelClass} htmlFor={authMethod === "email" ? "auth-email" : "auth-phone"}>
-                      {authMethod === "email" ? "Seu e-mail" : "Seu telefone"}
-                    </Label>
-                    {authMethod === "email" ? (
-                      <Input
-                        id="auth-email"
-                        className={authInputClassName}
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="seu@email.com"
-                        required
-                      />
-                    ) : (
-                      <Input
-                        id="auth-phone"
-                        className={authInputClassName}
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(maskPhone(e.target.value))}
-                        placeholder="(11) 99999-9999"
-                        required
-                      />
-                    )}
-                  </div>
+                  {authMethod === "email" ? (
+                    <AuthAnimatedField id="auth-email" label="Seu e-mail" value={email}>
+                      {({ onFocus, onBlur, className }) => (
+                        <Input
+                          id="auth-email"
+                          className={className}
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          onFocus={onFocus}
+                          onBlur={onBlur}
+                          placeholder=""
+                          autoComplete="email"
+                          required
+                        />
+                      )}
+                    </AuthAnimatedField>
+                  ) : (
+                    <AuthAnimatedField id="auth-phone" label="Seu telefone" value={phone}>
+                      {({ onFocus, onBlur, className }) => (
+                        <Input
+                          id="auth-phone"
+                          className={className}
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => setPhone(maskPhone(e.target.value))}
+                          onFocus={onFocus}
+                          onBlur={onBlur}
+                          placeholder=""
+                          autoComplete="tel"
+                          required
+                        />
+                      )}
+                    </AuthAnimatedField>
+                  )}
 
                   {isLogin && authMethod === "email" && (
                     <div>
-                      <Label className={authLabelClass} htmlFor="auth-pass-login">
-                        Senha
-                      </Label>
                       <p className="mb-1.5 font-sans text-xs text-[hsl(var(--ink-3))]">
                         Deixe em branco para receber um código de verificação.
                       </p>
-                      <Input
-                        id="auth-pass-login"
-                        className={authInputClassName}
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Vazio → recebe código OTP"
-                        minLength={0}
-                      />
+                      <AuthAnimatedField id="auth-pass-login" label="Senha" value={password}>
+                        {({ onFocus, onBlur, className }) => (
+                          <Input
+                            id="auth-pass-login"
+                            className={className}
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            onFocus={onFocus}
+                            onBlur={onBlur}
+                            placeholder=""
+                            autoComplete="current-password"
+                            minLength={0}
+                          />
+                        )}
+                      </AuthAnimatedField>
                       <div className="mt-1.5 text-right">
                         <button
                           type="button"
@@ -815,42 +1013,96 @@ export default function Auth() {
                   )}
 
                   {!isLogin && authMethod === "email" && (
-                    <div>
-                      <Label className={authLabelClass} htmlFor="auth-pass-signup">
-                        Senha
-                      </Label>
-                      <Input
-                        id="auth-pass-signup"
-                        className={authInputClassName}
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Mínimo 6 caracteres"
-                        required
-                        minLength={6}
-                      />
-                    </div>
+                    <AuthAnimatedField id="auth-pass-signup" label="Senha" value={password}>
+                      {({ onFocus, onBlur, className }) => (
+                        <Input
+                          id="auth-pass-signup"
+                          className={className}
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          onFocus={onFocus}
+                          onBlur={onBlur}
+                          placeholder=""
+                          autoComplete="new-password"
+                          required
+                          minLength={6}
+                        />
+                      )}
+                    </AuthAnimatedField>
                   )}
 
-                  <Button
-                    type="submit"
-                    aria-busy={loading}
-                    className={cn(
-                      "btn-primary h-11 w-full gap-2 text-base font-semibold",
-                      (loading || googleLoading) && "pointer-events-none cursor-wait opacity-80",
-                    )}
+                  <motion.div
+                    className="w-full"
+                    whileHover={{ scale: loading || googleLoading ? 1 : 1.02 }}
+                    whileTap={{ scale: loading || googleLoading ? 1 : 0.97 }}
                   >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                        {isLogin ? "Entrando..." : "Criando..."}
-                      </>
-                    ) : isLogin ? (
-                      "Entrar"
-                    ) : (
-                      "Criar minha conta"
-                    )}
-                  </Button>
+                    <Button
+                      type="submit"
+                      aria-busy={loading}
+                      disabled={loading || googleLoading}
+                      className={cn(
+                        "btn-primary relative h-11 w-full overflow-hidden text-base font-semibold",
+                        (loading || googleLoading) && "pointer-events-none cursor-wait opacity-80",
+                      )}
+                    >
+                      <span className="flex min-h-[1.25rem] w-full items-center justify-center gap-2">
+                        <AnimatePresence mode="wait">
+                          {loading ? (
+                            <motion.div
+                              key="loading"
+                              className="flex items-center justify-center"
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.8 }}
+                              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                            >
+                              <motion.svg
+                                className="h-5 w-5 shrink-0 text-primary-foreground"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                aria-hidden
+                                animate={{ rotate: 360 }}
+                                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                              >
+                                <circle cx="12" cy="12" r="9" strokeOpacity="0.25" />
+                                <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round" />
+                              </motion.svg>
+                              <span className="sr-only">{isLogin ? "Entrando…" : "Criando…"}</span>
+                            </motion.div>
+                          ) : submitPulse === "success" ? (
+                            <motion.div
+                              key="success"
+                              className="flex items-center justify-center"
+                              initial={{ scale: 0, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={{ opacity: 0, scale: 0.8 }}
+                              transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                            >
+                              <motion.span
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 14 }}
+                              >
+                                <Check className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+                              </motion.span>
+                              <span className="sr-only">Concluído</span>
+                            </motion.div>
+                          ) : submitPulse === "error" ? (
+                            <motion.span key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                              {isLogin ? "Tentar entrar de novo" : "Corrigir e criar conta"}
+                            </motion.span>
+                          ) : (
+                            <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                              {isLogin ? "Entrar" : "Criar minha conta"}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </span>
+                    </Button>
+                  </motion.div>
                 </motion.div>
               </AnimatePresence>
             </form>
@@ -886,7 +1138,7 @@ export default function Auth() {
             </div>
           </div>
         </motion.div>
-      </div>
+      </motion.div>
     </div>
   );
 }

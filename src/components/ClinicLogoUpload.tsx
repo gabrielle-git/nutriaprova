@@ -15,7 +15,8 @@ export default function ClinicLogoUpload() {
 
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
   const planTier = (profile as any)?.plan_tier || "basic";
-  const hasAccess = planTier === "clinic" || isSupreme;
+  const hasAccess =
+    planTier === "premium" || planTier === "clinic" || isSupreme;
   const logoUrl = (profile as any)?.clinic_logo_url as string | undefined;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,21 +73,21 @@ export default function ClinicLogoUpload() {
           Logotipo da Clínica
           {!hasAccess && (
             <span className="ml-auto text-xs font-normal text-muted-foreground flex items-center gap-1">
-              <Lock className="h-3 w-3" /> Plano Clínica
+              <Lock className="h-3 w-3" /> Premium / Clínica
             </span>
           )}
         </CardTitle>
         <CardDescription>
           {hasAccess
             ? "Sua marca aparecerá em todos os PDFs de dieta enviados aos clientes (white-label)."
-            : "Disponível exclusivamente para assinantes do Plano Clínica."}
+            : "Disponível nos planos Premium e Clínica. A assinatura em texto (nome + CRN) vale para todos os nutricionistas."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!hasAccess ? (
           <div className="rounded-lg border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
             <Lock className="h-6 w-6 mx-auto mb-2 opacity-50" />
-            Faça upgrade para o Plano Clínica para personalizar seus PDFs com a marca da sua clínica.
+            Faça upgrade para Premium ou Clínica para enviar sua logomarca nos PDFs.
           </div>
         ) : (
           <>

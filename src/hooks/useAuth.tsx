@@ -16,8 +16,14 @@ export interface Profile {
   updated_at: string;
   affiliate_code: string | null;
   referred_by: string | null;
+  /** Plano de assinatura (coluna `plan_tier` no banco). */
+  plan_tier?: string;
   /** URL pública (storage) da foto de perfil */
   avatar_url?: string | null;
+  /** Coluna DATE no Postgres (YYYY-MM-DD) */
+  birth_date?: string | null;
+  /** Snapshot JSON do questionário / dados do cliente */
+  client_data?: Record<string, unknown> | null;
 }
 
 interface AuthContextType {

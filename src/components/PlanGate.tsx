@@ -17,7 +17,7 @@ export interface TierConfig {
   aiCorrectionsPerDay: number | "unlimited";
   canWithdraw: boolean;           // pode sacar ganhos
   advancedDashboard: boolean;
-  customSignature: boolean;       // logo + assinatura personalizada
+  customSignature: boolean;       // upload de logomarca (white-label); assinatura texto vale para todos
   unlimitedValidations: boolean;  // sem custo de moeda por job (Clínica)
   groupSize: number;              // nutris no grupo (Clínica)
   prioritySupport: boolean;
@@ -47,7 +47,7 @@ export const TIER_CONFIG: Record<PlanTier, TierConfig> = {
     unlimitedValidations: false,
     groupSize: 0,
     prioritySupport: false,
-    priceMonthly: 49.9,
+    priceMonthly: 39.9,
   },
   premium: {
     label: "Premium (Pro)",
@@ -55,7 +55,7 @@ export const TIER_CONFIG: Record<PlanTier, TierConfig> = {
     aiCorrectionsPerDay: 10,
     canWithdraw: true,
     advancedDashboard: true,
-    customSignature: false,
+    customSignature: true,
     unlimitedValidations: false,
     groupSize: 0,
     prioritySupport: false,

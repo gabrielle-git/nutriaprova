@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
@@ -29,6 +29,26 @@ const TIER_LABELS: Record<string, string> = {
   clinic:   "Clínica",
 };
 
+function normalizeBirthDateInput(raw: string | null | undefined): string {
+  if (raw == null || raw === "") return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  return s.slice(0, 10);
+}
+
+/** Lê data de nascimento da coluna `birth_date` ou do JSON `client_data` (onboarding). */
+function birthDateFromProfile(profile: { birth_date?: string | null; client_data?: unknown } | null | undefined): string {
+  if (!profile) return "";
+  const fromCol = normalizeBirthDateInput(profile.birth_date ?? undefined);
+  if (fromCol) return fromCol;
+  const cd = profile.client_data;
+  if (cd && typeof cd === "object" && !Array.isArray(cd)) {
+    const bd = (cd as Record<string, unknown>).birthDate;
+    if (typeof bd === "string" && bd.trim()) return normalizeBirthDateInput(bd);
+  }
+  return "";
+}
+
 export default function Configuracoes() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -54,6 +74,18 @@ export default function Configuracoes() {
     // Abre direto na aba de planos se vier de ?tab=plano
     searchParams.get("tab") === "plano",
   );
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "plano") setPlansOpen(true);
+  }, [searchParams]);
+
+  // Perfil chega assíncrono do Auth — sincroniza nome e data (incl. birth_date ou client_data).
+  useEffect(() => {
+    if (!profile) return;
+    setFullName(profile.full_name || "");
+    const bd = birthDateFromProfile(profile);
+    if (bd) setBirthDate(bd);
+  }, [profile?.user_id, profile?.full_name, profile?.birth_date, profile?.client_data]);
 
   // Notification prefs (local state)
   const [notifEmail, setNotifEmail]         = useState(true);
@@ -103,11 +135,8 @@ export default function Configuracoes() {
   const tier    = (profile as any)?.plan_tier as string | undefined;
   const SUPREME_EMAIL = "helena.gaby31@gmail.com";
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
-  // Logo da clínica é feature exclusiva do plano Clínica (white-label).
-  // Esconder por completo para quem não é Clínica para não poluir Basic/Premium.
-  const canSeeClinicLogo =
-    (profile?.role === "nutritionist" || profile?.role === "admin") &&
-    (tier === "clinic" || isSupreme);
+  // Logomarca no PDF: Premium ou Clínica. Todos os nutris veem o bloco; upload trava por plano.
+  const canSeeClinicLogo = profile?.role === "nutritionist" || profile?.role === "admin";
 
   // ── Salvar dados da conta (nome + data de nascimento) ───────
   const handleSaveAccount = async () => {

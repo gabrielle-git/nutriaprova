@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { motion } from "framer-motion";
 
 import { cn } from "@/lib/utils";
 
@@ -32,16 +33,54 @@ const buttonVariants = cva(
   },
 );
 
+const motionSpring = { type: "spring" as const, stiffness: 400, damping: 17 };
+
+function buttonMotionProps(variant: VariantProps<typeof buttonVariants>["variant"]) {
+  const v = variant ?? "default";
+  const base = {
+    whileTap: { scale: 0.97 },
+    transition: motionSpring,
+  };
+  if (v === "default") {
+    return {
+      ...base,
+      whileHover: {
+        scale: 1.02,
+        y: -1,
+        boxShadow: "0 8px 24px hsl(158 72% 32% / 0.4)",
+      },
+    };
+  }
+  if (v === "destructive") {
+    return {
+      ...base,
+      whileHover: {
+        scale: 1.02,
+        boxShadow: "0 8px 24px hsl(0 78% 54% / 0.4)",
+      },
+    };
+  }
+  return base;
+}
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 
+const MotionButton = motion.button;
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
-    return <Comp className={cn(buttonVariants({ variant, size }), className)} ref={ref} {...props} />;
+    if (asChild) {
+      const Comp = Slot;
+      return <Comp className={cn(buttonVariants({ variant, size }), className)} ref={ref} {...props} />;
+    }
+    const m = buttonMotionProps(variant);
+    return (
+      <MotionButton ref={ref} className={cn(buttonVariants({ variant, size }), className)} {...m} {...props} />
+    );
   },
 );
 Button.displayName = "Button";

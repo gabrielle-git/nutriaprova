@@ -1,5 +1,12 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  AnimatePresence,
+  motion,
+  useSpring,
+  useTransform,
+  useInView,
+} from "framer-motion";
 import {
   Brain,
   ShieldCheck,
@@ -11,14 +18,17 @@ import {
   CreditCard,
   Check,
   X,
+  ChevronDown,
+  Home,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { useAuth, type Profile } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
+import { Button } from "@/components/ui/button";
+import CheckoutModal from "@/components/CheckoutModal";
+import { toast } from "sonner";
 
 const benefits = [
   {
@@ -29,9 +39,9 @@ const benefits = [
   },
   {
     icon: <ShieldCheck className="h-8 w-8 text-primary" />,
-    title: "Assinatura digital + logo",
+    title: "Assinatura legal e marca própria",
     description:
-      "Gere PDFs profissionais com sua assinatura e logomarca — white-label completo no plano Clínica.",
+      "Todos os nutricionistas usam assinatura em texto (nome + CRN) nos PDFs. A logomarca da clínica nos documentos é exclusiva dos planos Premium e Clínica.",
   },
   {
     icon: <TrendingUp className="h-8 w-8 text-primary" />,
@@ -72,7 +82,7 @@ const planSummary: PlanCard[] = [
   {
     name: "Basic",
     tier: "basic",
-    monthlyBrl: 49.9,
+    monthlyBrl: 39.9,
     tagline: "Primeiros atendimentos",
     coins: "20 moedas iniciais",
     ai: "5 correções de IA por dia",
@@ -104,6 +114,8 @@ const cardFeatureRows: Record<
   freemium: [
     { text: "Feed de pedidos de dieta", included: true },
     { text: "5 moedas (bônus único)", included: true },
+    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
+    { text: "Upload de logomarca (white-label)", included: false },
     { text: "Correções de IA", included: false },
     { text: "Saque via Pix", included: false },
     { text: "Leads exclusivos", included: false },
@@ -111,6 +123,8 @@ const cardFeatureRows: Record<
   ],
   basic: [
     { text: "20 moedas iniciais", included: true },
+    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
+    { text: "Upload de logomarca (white-label)", included: false },
     { text: "5 correções de IA por dia", included: true },
     { text: "R$ 15,00 por validação", included: true },
     { text: "Saque via Pix", included: true },
@@ -121,13 +135,15 @@ const cardFeatureRows: Record<
     { text: "120 moedas renovadas/mês", included: true },
     { text: "10 correções de IA por dia", included: true },
     { text: "Leads exclusivos", included: true },
-    { text: "Assinatura digital com CRN", included: true },
+    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
+    { text: "Upload de logomarca (white-label)", included: true },
     { text: "Comissões de afiliados (10%)", included: true },
     { text: "White-label equipe multi-nutri", included: false },
   ],
   clinic: [
     { text: "Moedas ilimitadas", included: true },
     { text: "IA ilimitada (sem cap diário)", included: true },
+    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
     { text: "White-label com logo da clínica", included: true },
     { text: "Até 4 nutricionistas no painel", included: true },
     { text: "Suporte prioritário + CRM", included: true },
@@ -139,7 +155,14 @@ const compareBoolRows: { label: string; tiers: Record<PlanTier, boolean> }[] = [
   { label: "Saque via Pix", tiers: { freemium: false, basic: true, premium: true, clinic: true } },
   { label: "Correções de IA", tiers: { freemium: false, basic: true, premium: true, clinic: true } },
   { label: "Leads exclusivos", tiers: { freemium: false, basic: false, premium: true, clinic: true } },
-  { label: "Assinatura / CRN em PDF", tiers: { freemium: false, basic: true, premium: true, clinic: true } },
+  {
+    label: "Assinatura digital (nome + CRN) nos PDFs",
+    tiers: { freemium: true, basic: true, premium: true, clinic: true },
+  },
+  {
+    label: "Upload de logomarca (white-label)",
+    tiers: { freemium: false, basic: false, premium: true, clinic: true },
+  },
   { label: "Comissões de afiliados", tiers: { freemium: false, basic: false, premium: true, clinic: true } },
   { label: "White-label + equipe", tiers: { freemium: false, basic: false, premium: false, clinic: true } },
 ];
@@ -186,38 +209,166 @@ function priceDisplayMain(
 
 const tierOrder: PlanTier[] = ["freemium", "basic", "premium", "clinic"];
 
+function planosHomePath(profile: Profile | null): string {
+  if (profile?.role === "client") return "/dashboard";
+  return "/inicio";
+}
+
+function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientY - rect.top) / rect.height - 0.5) * -10;
+    const y = ((e.clientX - rect.left) / rect.width - 0.5) * 10;
+    setTilt({ x, y });
+  };
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMove}
+      onMouseLeave={() => setTilt({ x: 0, y: 0 })}
+      animate={{ rotateX: tilt.x, rotateY: tilt.y }}
+      transition={{ type: "spring", stiffness: 250, damping: 25 }}
+      style={{ transformStyle: "preserve-3d", perspective: 1000 }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function UrgencyHours() {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true, margin: "-10%" });
+  const spring = useSpring(0, { stiffness: 55, damping: 22 });
+  const display = useTransform(spring, (v) => Math.round(v).toString());
+  useEffect(() => {
+    if (isInView) spring.set(24);
+  }, [isInView, spring]);
+  return (
+    <motion.span ref={ref} className="text-brand-animated inline-block font-display text-2xl font-bold tabular-nums">
+      {display}
+    </motion.span>
+  );
+}
+
 export default function PlanosLanding() {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
+  const { resolvedTheme, setTheme } = useTheme();
   const [annual, setAnnual] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutAmount, setCheckoutAmount] = useState(39.9);
+  const [checkoutPlanLabel, setCheckoutPlanLabel] = useState<string | null>(null);
 
-  const goRegister = () => navigate("/auth?role=nutritionist&openRegister=true");
+  const homePath = planosHomePath(profile);
+  const isDark = resolvedTheme === "dark";
+
+  const goAuthRegister = () => {
+    navigate("/auth?role=nutritionist&openRegister=true");
+  };
+
+  /** CTA “começar grátis” / visitante: cadastro; logado: hub do perfil. */
+  const goStartFree = () => {
+    if (!user) {
+      goAuthRegister();
+      return;
+    }
+    navigate(homePath);
+  };
+
+  const openCheckoutForPlan = (p: PlanCard) => {
+    if (!user) {
+      goAuthRegister();
+      return;
+    }
+    if (p.tier === "freemium") {
+      toast.info("O plano Freemium já está disponível na sua conta.");
+      navigate(homePath);
+      return;
+    }
+    const base = p.monthlyBrl ?? 0;
+    const amt = annual ? Math.round(base * 0.8 * 100) / 100 : base;
+    setCheckoutAmount(amt);
+    setCheckoutPlanLabel(p.name);
+    setCheckoutOpen(true);
+  };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen overflow-x-hidden bg-background">
+      <header className="sticky top-0 z-50 flex items-center justify-between gap-2 border-b border-[hsl(var(--surface-3))] bg-background/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 shadow-sm hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+          onClick={() => navigate(user ? homePath : "/")}
+        >
+          <Home className="h-4 w-4 shrink-0" />
+          <span className="hidden sm:inline">Voltar ao início</span>
+          <span className="sm:hidden">Início</span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 dark:bg-white dark:text-slate-900"
+          aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+          onClick={() => setTheme(isDark ? "light" : "dark")}
+        >
+          {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        </Button>
+      </header>
+
       {/* Hero */}
-      <section className="bg-hero px-4 py-16 md:py-20">
-        <div className="mx-auto max-w-3xl text-center">
-          <h1 className="font-display text-[2.5rem] font-extrabold leading-tight tracking-tight text-[hsl(var(--ink-1))]">
+      <section className="relative overflow-hidden bg-hero px-4 py-16 md:py-20">
+        <div
+          className="bg-grid pointer-events-none absolute inset-0 opacity-30"
+          aria-hidden
+        />
+        <div className="relative z-10 mx-auto max-w-3xl text-center">
+          <motion.h1
+            className="font-display text-[2.5rem] font-extrabold leading-tight tracking-tight text-[hsl(var(--ink-1))]"
+            initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          >
             Escolha seu plano
-          </h1>
-          <p className="mx-auto mt-3 max-w-md font-sans text-base font-normal text-[hsl(var(--ink-2))]">
+          </motion.h1>
+          <motion.p
+            className="mx-auto mt-3 max-w-md font-sans text-base font-normal text-[hsl(var(--ink-2))]"
+            initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.06 }}
+          >
             Escale validações com IA, moedas e PDFs profissionais. Compare com clareza e suba de nível quando fizer sentido.
-          </p>
+          </motion.p>
 
           <div className="mx-auto mt-8 flex justify-center">
-            <div
-              className="relative inline-flex rounded-full border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-2))] p-1 shadow-sm"
+            <motion.div
+              layout
+              className="relative inline-flex min-w-[280px] rounded-full bg-[hsl(var(--surface-2))] p-1 shadow-sm"
               role="group"
               aria-label="Período de cobrança"
             >
+              <motion.div
+                layoutId="billing-toggle-planos"
+                className="pointer-events-none absolute bottom-1 top-1 rounded-full bg-white shadow-sm dark:bg-white"
+                style={{ width: "calc(50% - 4px)" }}
+                initial={false}
+                animate={{ left: annual ? "calc(50% + 0px)" : "4px" }}
+                transition={{ type: "spring", stiffness: 400, damping: 35 }}
+              />
               <button
                 type="button"
                 onClick={() => setAnnual(false)}
                 className={cn(
-                  "relative z-10 rounded-full px-5 py-2 text-sm font-medium transition-all duration-300",
-                  !annual
-                    ? "bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))] shadow-sm"
-                    : "text-[hsl(var(--ink-3))]",
+                  "relative z-10 flex-1 rounded-full px-5 py-2 text-sm font-medium transition-colors duration-200",
+                  !annual ? "text-slate-900 dark:text-slate-900" : "text-[hsl(var(--ink-3))]",
                 )}
               >
                 Mensal
@@ -226,16 +377,20 @@ export default function PlanosLanding() {
                 type="button"
                 onClick={() => setAnnual(true)}
                 className={cn(
-                  "relative z-10 inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-all duration-300",
-                  annual
-                    ? "bg-[hsl(var(--surface-0))] text-[hsl(var(--ink-1))] shadow-sm"
-                    : "text-[hsl(var(--ink-3))]",
+                  "relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-colors duration-200",
+                  annual ? "text-slate-900 dark:text-slate-900" : "text-[hsl(var(--ink-3))]",
                 )}
               >
                 Anual
-                <span className="badge-gold scale-90 text-[0.65rem] leading-none">-20%</span>
+                <motion.span
+                  className="badge-gold origin-center scale-90 text-[0.65rem] leading-none"
+                  animate={{ scale: annual ? [1, 1.2, 1] : 1 }}
+                  transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+                >
+                  -20%
+                </motion.span>
               </button>
-            </div>
+            </motion.div>
           </div>
 
           <p className="mt-3 text-center text-xs text-[hsl(var(--ink-3))]">
@@ -244,13 +399,16 @@ export default function PlanosLanding() {
               : "Preços base mensal. Você pode comparar o anual no toggle acima."}
           </p>
 
-          <button
+          <motion.button
             type="button"
-            onClick={goRegister}
-            className="btn-primary mt-8 h-12 px-10 text-base"
+            onClick={goStartFree}
+            className="btn-primary btn-breathe border-beam relative mt-8 h-12 overflow-hidden px-10 text-base text-white"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 350 }}
           >
             Começar grátis
-          </button>
+          </motion.button>
           <p className="mt-3 font-sans text-xs text-[hsl(var(--ink-3))]">Sem cartão para testar · cancele quando quiser</p>
         </div>
       </section>
@@ -287,99 +445,177 @@ export default function PlanosLanding() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-            {planSummary.map((p) => {
+            {planSummary.map((p, index) => {
               const display = priceDisplayMain(p, annual);
+              const priceKey = `${display.main}|${display.suffix}|${annual}|${p.tier}`;
               return (
-                <div
+                <TiltCard
                   key={p.name}
                   className={cn(
-                    "relative flex min-h-[320px] flex-col rounded-[var(--radius)] p-6 transition-shadow duration-300",
-                    p.highlight
-                      ? "border-2 border-[hsl(var(--primary))] shadow-card-hover"
-                      : "card-clinical",
+                    p.highlight && "border-beam gradient-border rounded-[var(--radius)]",
                   )}
                 >
-                  {p.highlight && (
-                    <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[hsl(var(--primary))] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm">
-                      Mais popular
-                    </span>
-                  )}
-
-                  <h3 className="font-display text-[1.25rem] font-bold text-[hsl(var(--ink-1))]">{p.name}</h3>
-                  <p className="mt-0.5 font-sans text-xs text-[hsl(var(--ink-3))]">{p.tagline}</p>
-
-                  <div className="mt-4 min-h-[4.5rem]">
-                    <div className="flex flex-wrap items-baseline gap-1.5">
-                      <span className="font-display text-[2.5rem] font-extrabold leading-none text-brand">
-                        {display.main}
-                      </span>
-                      {display.suffix ? (
-                        <span className="font-sans text-sm font-normal text-[hsl(var(--ink-3))]">{display.suffix}</span>
-                      ) : null}
-                    </div>
-                    {display.note && (
-                      <p className="mt-1 font-sans text-xs text-[hsl(var(--ink-3))]">{display.note}</p>
+                  <motion.div
+                    initial={{ opacity: 0, y: 40, scale: 0.93 }}
+                    whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                    viewport={{ once: true, amount: 0.2 }}
+                    transition={{ delay: index * 0.12, ease: [0.16, 1, 0.3, 1], duration: 0.55 }}
+                  >
+                    <motion.div
+                      className={cn(
+                        "group relative flex min-h-[320px] flex-col rounded-[var(--radius)] p-6",
+                        p.highlight
+                          ? "border-2 border-[hsl(var(--primary))] shadow-card-hover"
+                          : "card-clinical",
+                      )}
+                      animate={p.highlight ? { y: [0, -4, 0] } : { y: 0 }}
+                      transition={
+                        p.highlight
+                          ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
+                          : { duration: 0.3 }
+                      }
+                    >
+                    {p.highlight && (
+                      <motion.span
+                        className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-[hsl(var(--primary))] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-sm"
+                        initial={{ opacity: 0, y: -10, scale: 0.7 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: 0.5, type: "spring", stiffness: 400, damping: 18 }}
+                      >
+                        Mais popular
+                      </motion.span>
                     )}
-                  </div>
 
-                  <div className="mb-4 mt-2 space-y-2 border-b border-[hsl(var(--surface-3))] pb-4">
-                    <div className="flex items-start gap-2">
-                      <Coins className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
-                      <span className="font-sans text-sm text-[hsl(var(--ink-2))]">{p.coins}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Zap className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
-                      <span className="font-sans text-sm text-[hsl(var(--ink-2))]">{p.ai}</span>
-                    </div>
-                  </div>
+                    <h3 className="font-display text-[1.25rem] font-bold text-[hsl(var(--ink-1))]">{p.name}</h3>
+                    <p className="mt-0.5 font-sans text-xs text-[hsl(var(--ink-3))]">{p.tagline}</p>
 
-                  <ul className="mb-5 flex-1 space-y-2.5">
-                    {cardFeatureRows[p.tier].map((row) => (
-                      <li key={row.text} className="flex items-start gap-2">
-                        {row.included ? (
-                          <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" strokeWidth={2.5} />
-                        ) : (
-                          <X className="mt-0.5 h-4 w-4 flex-shrink-0 text-[hsl(var(--ink-3))] opacity-70" strokeWidth={2} />
-                        )}
-                        <span
-                          className={cn(
-                            "font-sans text-[14px] leading-snug",
-                            row.included ? "text-[hsl(var(--ink-2))]" : "text-[hsl(var(--ink-3))] line-through",
-                          )}
-                        >
-                          {row.text}
+                    <div className="mt-4 min-h-[4.5rem]">
+                      <div className="flex flex-wrap items-baseline gap-1.5">
+                        <span className="font-display text-[2.5rem] font-extrabold leading-none text-brand">
+                          <AnimatePresence mode="wait">
+                            <motion.span
+                              key={priceKey}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -20 }}
+                              transition={{ duration: 0.2 }}
+                              className="inline-block"
+                            >
+                              {display.main}
+                            </motion.span>
+                          </AnimatePresence>
                         </span>
-                      </li>
-                    ))}
-                  </ul>
+                        {display.suffix ? (
+                          <span className="font-sans text-sm font-normal text-[hsl(var(--ink-3))]">{display.suffix}</span>
+                        ) : null}
+                      </div>
+                      {display.note && (
+                        <p className="mt-1 font-sans text-xs text-[hsl(var(--ink-3))]">{display.note}</p>
+                      )}
+                    </div>
 
-                  {p.highlight ? (
-                    <button
-                      type="button"
-                      onClick={goRegister}
-                      className="btn-primary mt-auto w-full py-2.5"
-                    >
-                      Escolher {p.name}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={goRegister}
-                      className="mt-auto w-full rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-transparent py-2.5 text-sm font-semibold text-[hsl(var(--ink-1))] transition-colors hover:bg-[hsl(var(--surface-2))]"
-                    >
-                      Escolher {p.name}
-                    </button>
-                  )}
-                </div>
+                    <div className="mb-4 mt-2 space-y-2 border-b border-[hsl(var(--surface-3))] pb-4">
+                      <div className="flex items-start gap-2">
+                        <Coins className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                        <span className="font-sans text-sm text-[hsl(var(--ink-2))]">{p.coins}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Zap className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                        <span className="font-sans text-sm text-[hsl(var(--ink-2))]">{p.ai}</span>
+                      </div>
+                    </div>
+
+                    <ul className="mb-5 flex-1 space-y-2.5">
+                      {cardFeatureRows[p.tier].map((row, fi) => (
+                        <motion.li
+                          key={row.text}
+                          className="flex items-start gap-2"
+                          initial={{ opacity: 0, x: -16 }}
+                          whileInView={{ opacity: 1, x: 0 }}
+                          viewport={{ once: true, amount: 0.15 }}
+                          transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                          {row.included ? (
+                            <motion.span
+                              className="mt-0.5 inline-flex"
+                              initial={{ scale: 0, opacity: 0 }}
+                              whileInView={{ scale: 1, opacity: 1 }}
+                              viewport={{ once: true, amount: 0.15 }}
+                              transition={{
+                                delay: fi * 0.06 + 0.1,
+                                type: "spring",
+                                stiffness: 500,
+                                damping: 22,
+                              }}
+                            >
+                              <Check className="h-4 w-4 flex-shrink-0 text-primary" strokeWidth={2.5} />
+                            </motion.span>
+                          ) : (
+                            <X className="mt-0.5 h-4 w-4 flex-shrink-0 text-[hsl(var(--ink-3))] opacity-70" strokeWidth={2} />
+                          )}
+                          <span
+                            className={cn(
+                              "font-sans text-[14px] leading-snug",
+                              row.included ? "text-[hsl(var(--ink-2))]" : "text-[hsl(var(--ink-3))] line-through",
+                            )}
+                          >
+                            {row.text}
+                          </span>
+                        </motion.li>
+                      ))}
+                    </ul>
+
+                    {p.highlight ? (
+                      <motion.button
+                        type="button"
+                        onClick={() => openCheckoutForPlan(p)}
+                        className="btn-primary btn-breathe border-beam relative mt-auto w-full overflow-hidden py-2.5 text-white shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)]"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ type: "spring", stiffness: 350 }}
+                      >
+                        Escolher {p.name}
+                      </motion.button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openCheckoutForPlan(p)}
+                        className="mt-auto w-full rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+                      >
+                        Escolher {p.name}
+                      </button>
+                    )}
+                    </motion.div>
+                  </motion.div>
+                </TiltCard>
               );
             })}
           </div>
 
           <div className="mt-10 text-center">
-            <button type="button" onClick={goRegister} className="btn-primary h-12 px-10 text-base">
+            <motion.button
+              type="button"
+              onClick={goStartFree}
+              className="btn-primary btn-breathe border-beam relative h-12 overflow-hidden px-10 text-base text-white"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 350 }}
+            >
               Começar agora
-            </button>
+            </motion.button>
           </div>
+        </div>
+      </section>
+
+      {/* Urgência / escassez (percepção de valor — SLA de onboarding) */}
+      <section className="mx-auto max-w-3xl px-4 py-10">
+        <div className="pulse-brand rounded-2xl border border-[hsl(var(--primary))]/25 bg-[hsl(var(--primary))]/5 px-6 py-8 text-center">
+          <p className="font-display text-base font-semibold text-[hsl(var(--ink-1))] md:text-lg">
+            Onboarding prioritário: primeira resposta em até{" "}
+            <UrgencyHours />
+            <span className="text-brand-animated font-bold">h</span>
+            {" "}úteis após confirmação do pagamento nos planos pagos.
+          </p>
         </div>
       </section>
 
@@ -440,22 +676,47 @@ export default function PlanosLanding() {
       <section className="border-t border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-16 px-4">
         <div className="mx-auto max-w-2xl">
           <h2 className="mb-6 text-center font-display text-2xl font-bold text-[hsl(var(--ink-1))]">Perguntas frequentes</h2>
-          <Accordion type="single" collapsible className="w-full space-y-3">
-            {faqItems.map((item, i) => (
-              <AccordionItem
-                key={i}
-                value={`faq-${i}`}
-                className="card-clinical border-0 !border-0"
-              >
-                <AccordionTrigger className="px-4 py-3 text-left font-display text-base font-semibold text-[hsl(var(--ink-1))] hover:no-underline">
-                  {item.q}
-                </AccordionTrigger>
-                <AccordionContent>
-                  <p className="px-4 pb-3 text-left font-sans text-sm font-normal text-[hsl(var(--ink-2))]">{item.a}</p>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <div className="flex w-full flex-col gap-3">
+            {faqItems.map((item, i) => {
+              const isOpen = openFaq === i;
+              return (
+                <div
+                  key={i}
+                  className="card-clinical overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--surface-3))] !border-solid"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpenFaq(isOpen ? null : i)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left font-display text-base font-semibold text-[hsl(var(--ink-1))] hover:bg-[hsl(var(--surface-2))]/50"
+                  >
+                    {item.q}
+                    <motion.span
+                      animate={{ rotate: isOpen ? 180 : 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="inline-flex shrink-0"
+                    >
+                      <ChevronDown className="h-4 w-4 text-[hsl(var(--ink-3))]" />
+                    </motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isOpen ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <p className="px-4 pb-3 text-left font-sans text-sm font-normal text-[hsl(var(--ink-2))]">
+                          {item.a}
+                        </p>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -490,6 +751,14 @@ export default function PlanosLanding() {
           </div>
         </div>
       </section>
+
+      <CheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        amount={checkoutAmount}
+        planLabel={checkoutPlanLabel}
+        onApproved={() => navigate(homePath)}
+      />
     </div>
   );
 }
