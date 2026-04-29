@@ -1,7 +1,7 @@
-import { type ComponentProps, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useScroll, useSpring, useTransform } from "framer-motion";
-import { Bell, Settings, LogOut, X, Sun, Moon, BookOpen, Users, Leaf } from "lucide-react";
+import { Bell, Settings, LogOut, X, Sun, Moon, BookOpen, Users, Leaf, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -110,9 +110,15 @@ function HeaderThemeToggle() {
   );
 }
 
-export default function AppHeader() {
+type AppHeaderProps = {
+  /** Conteúdo extra à esquerda do sininho (ex.: “+ Novo Artigo” no Blog). */
+  trailingStart?: ReactNode;
+};
+
+export default function AppHeader({ trailingStart }: AppHeaderProps) {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -210,6 +216,15 @@ export default function AppHeader() {
   if (!user) return null;
 
   const userInitials = getInitials(profile?.full_name, user.email ?? undefined);
+  const showBackButton = ![
+    "/",
+    "/inicio",
+    "/nutri-dashboard",
+    "/dashboard",
+    "/personal-dashboard",
+    "/admin",
+    "/admin-supremo",
+  ].includes(location.pathname);
 
   return (
     <motion.header
@@ -225,28 +240,41 @@ export default function AppHeader() {
       }}
     >
       <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between gap-3 px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          className="group flex h-7 min-w-0 items-center gap-2.5 rounded-lg text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))] focus-visible:ring-offset-2"
-        >
-          <motion.div
-            className="flex min-w-0 items-center gap-2.5"
-            initial={{ opacity: 0, x: -30, scale: 0.8 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+        <div className="flex min-w-0 shrink items-center gap-2">
+          {showBackButton && (
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              aria-label="Voltar"
+              className="flex shrink-0 cursor-pointer items-center justify-center rounded-full p-2 transition-colors hover:bg-gray-100/50"
+            >
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="group flex h-7 min-w-0 shrink items-center gap-2.5 rounded-lg text-left transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--primary))] focus-visible:ring-offset-2"
           >
-            <Leaf className="h-7 w-7 shrink-0 text-primary" strokeWidth={1.85} aria-hidden />
-            <span className="flex min-w-0 items-center gap-1.5" style={{ lineHeight: "28px" }}>
-              <span className="font-display text-lg font-black tracking-tighter text-[hsl(var(--ink-1))] sm:text-xl">
-                Nutr<span className="text-brand-animated">IAprova</span>
+            <motion.div
+              className="flex min-w-0 items-center gap-2.5"
+              initial={{ opacity: 0, x: -30, scale: 0.8 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+            >
+              <Leaf className="h-7 w-7 shrink-0 text-primary" strokeWidth={1.85} aria-hidden />
+              <span className="flex min-w-0 items-center gap-1.5" style={{ lineHeight: "28px" }}>
+                <span className="font-display text-lg font-black tracking-tighter text-[hsl(var(--ink-1))] sm:text-xl">
+                  Nutr<span className="text-brand-animated">IAprova</span>
+                </span>
+                <span className="badge-live text-xs min-h-[1em]" aria-hidden />
               </span>
-              <span className="badge-live text-xs min-h-[1em]" aria-hidden />
-            </span>
-          </motion.div>
-        </button>
+            </motion.div>
+          </button>
+        </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2 md:gap-3">
+        <div className="flex shrink-0 items-center justify-end gap-4">
+          {trailingStart}
           <div className="relative shrink-0" ref={notifWrapperRef}>
             <HeaderIconButton
               aria-label="Notificações"

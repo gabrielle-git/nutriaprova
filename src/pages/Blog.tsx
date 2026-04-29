@@ -164,25 +164,22 @@ export default function Blog() {
   return (
     <div className="min-h-screen bg-background">
       {user ? (
-        <>
-          <AppHeader />
-          {canManage && (
-            <div className="sticky top-16 z-40 border-b border-border/50 bg-card/80 backdrop-blur-sm">
-              <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-2 md:px-6">
-                <Button
-                  size="sm"
-                  className="emerald-gradient gap-1 text-primary-foreground"
-                  onClick={() => {
-                    setEditingPost(null);
-                    setEditorOpen(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4" /> Novo Artigo
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
+        <AppHeader
+          trailingStart={
+            canManage ? (
+              <Button
+                size="sm"
+                className="shrink-0 emerald-gradient gap-1 text-primary-foreground"
+                onClick={() => {
+                  setEditingPost(null);
+                  setEditorOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Novo Artigo
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <header className="sticky top-0 z-50 flex items-center justify-between border-b border-border/50 bg-card/50 px-6 py-4 backdrop-blur-sm">
           <div className="flex cursor-pointer items-center gap-2" onClick={() => navigate("/")}>

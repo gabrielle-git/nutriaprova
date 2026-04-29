@@ -19,7 +19,7 @@ import {
   Check,
   X,
   ChevronDown,
-  Home,
+  ArrowLeft,
   Sun,
   Moon,
 } from "lucide-react";
@@ -27,8 +27,20 @@ import { cn } from "@/lib/utils";
 import { useAuth, type Profile } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
-import CheckoutModal from "@/components/CheckoutModal";
+import PlanCheckoutModal, { type CheckoutPlanSelection } from "@/components/PlanCheckoutModal";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const benefits = [
   {
@@ -126,28 +138,26 @@ const cardFeatureRows: Record<
     { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
     { text: "Upload de logomarca (white-label)", included: false },
     { text: "5 correções de IA por dia", included: true },
-    { text: "R$ 15,00 por validação", included: true },
+    { text: "Ganho de R$ 15,00 líquidos por validação", included: true },
     { text: "Saque via Pix", included: true },
     { text: "Leads exclusivos", included: false },
     { text: "Comissões de afiliados (10%)", included: false },
   ],
   premium: [
+    { text: "Tudo do plano Basic, e mais:", included: true },
     { text: "120 moedas renovadas/mês", included: true },
     { text: "10 correções de IA por dia", included: true },
     { text: "Leads exclusivos", included: true },
-    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
     { text: "Upload de logomarca (white-label)", included: true },
     { text: "Comissões de afiliados (10%)", included: true },
     { text: "White-label equipe multi-nutri", included: false },
   ],
   clinic: [
+    { text: "Tudo do plano Premium, e mais:", included: true },
     { text: "Moedas ilimitadas", included: true },
     { text: "IA ilimitada (sem cap diário)", included: true },
-    { text: "Assinatura digital (nome + CRN) nos PDFs", included: true },
-    { text: "White-label com logo da clínica", included: true },
-    { text: "Até 4 nutricionistas no painel", included: true },
+    { text: "Até 4 nutricionistas no painel, ideal para escalar sua experiência clínica", included: true },
     { text: "Suporte prioritário + CRM", included: true },
-    { text: "Todos os benefícios Premium", included: true },
   ],
 };
 
@@ -257,16 +267,18 @@ function UrgencyHours() {
 
 export default function PlanosLanding() {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { resolvedTheme, setTheme } = useTheme();
   const [annual, setAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkoutAmount, setCheckoutAmount] = useState(39.9);
-  const [checkoutPlanLabel, setCheckoutPlanLabel] = useState<string | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<CheckoutPlanSelection | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const homePath = planosHomePath(profile);
   const isDark = resolvedTheme === "dark";
+  const currentTier = String(profile?.plan_tier ?? "freemium").toLowerCase();
+  const hasPaidPlan = currentTier === "basic" || currentTier === "premium" || currentTier === "clinic";
 
   const goAuthRegister = () => {
     navigate("/auth?role=nutritionist&openRegister=true");
@@ -291,11 +303,45 @@ export default function PlanosLanding() {
       navigate(homePath);
       return;
     }
+    if (currentTier === p.tier) {
+      toast.info(`Você já está no plano ${p.name}.`);
+      return;
+    }
     const base = p.monthlyBrl ?? 0;
     const amt = annual ? Math.round(base * 0.8 * 100) / 100 : base;
-    setCheckoutAmount(amt);
-    setCheckoutPlanLabel(p.name);
+    setCheckoutPlan({ name: p.name, tier: p.tier, amount: amt });
     setCheckoutOpen(true);
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!user || !hasPaidPlan) return;
+
+    setCancelling(true);
+    try {
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ plan_tier: "freemium" })
+        .eq("user_id", user.id);
+      if (profileErr) throw profileErr;
+
+      const { error: txErr } = await supabase.from("transactions").insert({
+        user_id: user.id,
+        amount: 0,
+        type: "plan_downgrade",
+        description: "Cancelamento de assinatura e retorno para Freemium",
+      });
+      if (txErr) throw txErr;
+
+      await refreshProfile();
+      toast.success(
+        "Plano alterado para Freemium. Faça upgrade ou compre moedas para continuar validando e acessando recursos premium.",
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Não foi possível cancelar a assinatura.";
+      toast.error(message);
+    } finally {
+      setCancelling(false);
+    }
   };
 
   return (
@@ -303,52 +349,100 @@ export default function PlanosLanding() {
       <header className="sticky top-0 z-50 flex items-center justify-between gap-2 border-b border-[hsl(var(--surface-3))] bg-background/95 px-3 py-2.5 backdrop-blur-md sm:px-4">
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="gap-1.5 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 shadow-sm hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
-          onClick={() => navigate(user ? homePath : "/")}
+          className="h-9 shrink-0 gap-1.5 px-2 text-[hsl(var(--ink-2))] hover:bg-[hsl(var(--surface-2))] hover:text-[hsl(var(--ink-1))]"
+          aria-label="Voltar"
+          onClick={() => navigate(-1)}
         >
-          <Home className="h-4 w-4 shrink-0" />
-          <span className="hidden sm:inline">Voltar ao início</span>
-          <span className="sm:hidden">Início</span>
+          <ArrowLeft className="h-5 w-5 shrink-0" />
+          <span className="hidden text-sm sm:inline">Voltar</span>
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-9 w-9 shrink-0 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 dark:bg-white dark:text-slate-900"
-          aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
-          onClick={() => setTheme(isDark ? "light" : "dark")}
-        >
-          {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          {user && hasPaidPlan && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
+                  Cancelar assinatura
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancelar assinatura?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Tem certeza que deseja cancelar? Você perderá os benefícios exclusivos e voltará para o plano Freemium.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Voltar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelling}
+                  >
+                    {cancelling ? "Cancelando..." : "Sim, cancelar"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0 border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 dark:bg-white dark:text-slate-900"
+            aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+          >
+            {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </Button>
+        </div>
       </header>
 
-      {/* Hero */}
+      {!user && (
       <section className="relative overflow-hidden bg-hero px-4 py-16 md:py-20">
         <div
           className="bg-grid pointer-events-none absolute inset-0 opacity-30"
           aria-hidden
         />
         <div className="relative z-10 mx-auto max-w-3xl text-center">
-          <motion.h1
-            className="font-display text-[2.5rem] font-extrabold leading-tight tracking-tight text-[hsl(var(--ink-1))]"
-            initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          <motion.button
+            type="button"
+            onClick={goStartFree}
+            className="btn-primary btn-breathe border-beam relative h-12 overflow-hidden px-10 text-base text-white"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 350 }}
           >
-            Escolha seu plano
-          </motion.h1>
-          <motion.p
-            className="mx-auto mt-3 max-w-md font-sans text-base font-normal text-[hsl(var(--ink-2))]"
-            initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.06 }}
-          >
-            Escale validações com IA, moedas e PDFs profissionais. Compare com clareza e suba de nível quando fizer sentido.
-          </motion.p>
+            Começar grátis
+          </motion.button>
+          <p className="mt-3 font-sans text-xs text-[hsl(var(--ink-3))]">Sem cartão para testar · cancele quando quiser</p>
+        </div>
+      </section>
+      )}
 
-          <div className="mx-auto mt-8 flex justify-center">
+      {/* Planos */}
+      <section className="border-y border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-16 px-4">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-8 text-center">
+            <motion.h1
+              className="font-display text-[2.5rem] font-extrabold leading-tight tracking-tight text-[hsl(var(--ink-1))]"
+              initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Escolha seu plano
+            </motion.h1>
+            <motion.p
+              className="mx-auto mt-3 max-w-md font-sans text-base font-normal text-[hsl(var(--ink-2))] md:max-w-2xl"
+              initial={{ opacity: 0, scale: 0.88, filter: "blur(12px)" }}
+              animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.06 }}
+            >
+              Escale validações com IA, moedas e PDFs profissionais. Compare com clareza e suba de nível quando fizer sentido.
+            </motion.p>
+          </div>
+          <div className="mb-8 flex justify-center">
             <motion.div
               layout
               className="relative inline-flex min-w-[280px] rounded-full bg-[hsl(var(--surface-2))] p-1 shadow-sm"
@@ -392,57 +486,11 @@ export default function PlanosLanding() {
               </button>
             </motion.div>
           </div>
-
-          <p className="mt-3 text-center text-xs text-[hsl(var(--ink-3))]">
+          <p className="mb-10 text-center text-xs text-[hsl(var(--ink-3))]">
             {annual
               ? "Valores equivalentes ao mês com economia de 20% na fidelidade anual (exibição)."
               : "Preços base mensal. Você pode comparar o anual no toggle acima."}
           </p>
-
-          <motion.button
-            type="button"
-            onClick={goStartFree}
-            className="btn-primary btn-breathe border-beam relative mt-8 h-12 overflow-hidden px-10 text-base text-white"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: "spring", stiffness: 350 }}
-          >
-            Começar grátis
-          </motion.button>
-          <p className="mt-3 font-sans text-xs text-[hsl(var(--ink-3))]">Sem cartão para testar · cancele quando quiser</p>
-        </div>
-      </section>
-
-      {/* Benefícios */}
-      <section className="mx-auto max-w-5xl px-4 py-16">
-        <h2 className="mb-10 text-center font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">
-          Por que a nutrIAprova?
-        </h2>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {benefits.map((b, i) => (
-            <div
-              key={i}
-              className="card-clinical flex gap-4 rounded-2xl p-6"
-            >
-              <div className="shrink-0">{b.icon}</div>
-              <div>
-                <h3 className="mb-1 font-display text-lg font-bold text-[hsl(var(--ink-1))]">{b.title}</h3>
-                <p className="font-sans text-sm text-[hsl(var(--ink-2))]">{b.description}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Planos */}
-      <section className="border-y border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-16 px-4">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-10 text-center">
-            <h2 className="mb-2 font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">Planos e preços</h2>
-            <p className="mx-auto max-w-2xl font-sans text-sm text-[hsl(var(--ink-2))]">
-              <strong>IA</strong> e <strong>moedas</strong> lado a lado — escolha o ritmo do seu consultório.
-            </p>
-          </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
             {planSummary.map((p, index) => {
@@ -452,10 +500,12 @@ export default function PlanosLanding() {
                 <TiltCard
                   key={p.name}
                   className={cn(
+                    "h-full",
                     p.highlight && "border-beam gradient-border rounded-[var(--radius)]",
                   )}
                 >
                   <motion.div
+                    className="h-full"
                     initial={{ opacity: 0, y: 40, scale: 0.93 }}
                     whileInView={{ opacity: 1, y: 0, scale: 1 }}
                     viewport={{ once: true, amount: 0.2 }}
@@ -463,7 +513,7 @@ export default function PlanosLanding() {
                   >
                     <motion.div
                       className={cn(
-                        "group relative flex min-h-[320px] flex-col rounded-[var(--radius)] p-6",
+                        "group relative flex h-full min-h-[320px] flex-col rounded-[var(--radius)] p-6",
                         p.highlight
                           ? "border-2 border-[hsl(var(--primary))] shadow-card-hover"
                           : "card-clinical",
@@ -526,65 +576,82 @@ export default function PlanosLanding() {
                     </div>
 
                     <ul className="mb-5 flex-1 space-y-2.5">
-                      {cardFeatureRows[p.tier].map((row, fi) => (
-                        <motion.li
-                          key={row.text}
-                          className="flex items-start gap-2"
-                          initial={{ opacity: 0, x: -16 }}
-                          whileInView={{ opacity: 1, x: 0 }}
-                          viewport={{ once: true, amount: 0.15 }}
-                          transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                        >
-                          {row.included ? (
-                            <motion.span
-                              className="mt-0.5 inline-flex"
-                              initial={{ scale: 0, opacity: 0 }}
-                              whileInView={{ scale: 1, opacity: 1 }}
-                              viewport={{ once: true, amount: 0.15 }}
-                              transition={{
-                                delay: fi * 0.06 + 0.1,
-                                type: "spring",
-                                stiffness: 500,
-                                damping: 22,
-                              }}
-                            >
-                              <Check className="h-4 w-4 flex-shrink-0 text-primary" strokeWidth={2.5} />
-                            </motion.span>
-                          ) : (
-                            <X className="mt-0.5 h-4 w-4 flex-shrink-0 text-[hsl(var(--ink-3))] opacity-70" strokeWidth={2} />
-                          )}
-                          <span
-                            className={cn(
-                              "font-sans text-[14px] leading-snug",
-                              row.included ? "text-[hsl(var(--ink-2))]" : "text-[hsl(var(--ink-3))] line-through",
-                            )}
+                      {cardFeatureRows[p.tier].map((row, fi) => {
+                        const isCascadeHeader = row.text.startsWith("Tudo do plano");
+                        const isClinicTeamExclusive =
+                          row.included && row.text.includes("escalar sua experiência clínica");
+                        const featureHighlight = isCascadeHeader || isClinicTeamExclusive;
+                        return (
+                          <motion.li
+                            key={row.text}
+                            className="flex items-start gap-2"
+                            initial={{ opacity: 0, x: -16 }}
+                            whileInView={{ opacity: 1, x: 0 }}
+                            viewport={{ once: true, amount: 0.15 }}
+                            transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                           >
-                            {row.text}
-                          </span>
-                        </motion.li>
-                      ))}
+                            {row.included ? (
+                              <motion.span
+                                className="mt-0.5 inline-flex"
+                                initial={{ scale: 0, opacity: 0 }}
+                                whileInView={{ scale: 1, opacity: 1 }}
+                                viewport={{ once: true, amount: 0.15 }}
+                                transition={{
+                                  delay: fi * 0.06 + 0.1,
+                                  type: "spring",
+                                  stiffness: 500,
+                                  damping: 22,
+                                }}
+                              >
+                                <Check className={cn("h-4 w-4 flex-shrink-0", featureHighlight ? "text-emerald-600" : "text-primary")} strokeWidth={2.5} />
+                              </motion.span>
+                            ) : (
+                              <X className="mt-0.5 h-4 w-4 flex-shrink-0 text-[hsl(var(--ink-3))] opacity-70" strokeWidth={2} />
+                            )}
+                            <span
+                              className={cn(
+                                "font-sans text-[14px] leading-snug",
+                                row.included ? "text-[hsl(var(--ink-2))]" : "text-[hsl(var(--ink-3))] line-through",
+                                featureHighlight && row.included && "font-semibold text-primary",
+                              )}
+                            >
+                              {row.text}
+                            </span>
+                          </motion.li>
+                        );
+                      })}
                     </ul>
 
-                    {p.highlight ? (
-                      <motion.button
-                        type="button"
-                        onClick={() => openCheckoutForPlan(p)}
-                        className="btn-primary btn-breathe border-beam relative mt-auto w-full overflow-hidden py-2.5 text-white shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)]"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 350 }}
-                      >
-                        Escolher {p.name}
-                      </motion.button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => openCheckoutForPlan(p)}
-                        className="mt-auto w-full rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
-                      >
-                        Escolher {p.name}
-                      </button>
-                    )}
+                    <div className="mt-auto flex justify-center pt-1">
+                      {(() => {
+                        const isCurrentPlan = !!user && currentTier === p.tier;
+                        if (p.highlight) {
+                          return (
+                            <motion.button
+                              type="button"
+                              onClick={() => openCheckoutForPlan(p)}
+                              disabled={isCurrentPlan}
+                              className="btn-primary btn-breathe border-beam relative w-full overflow-hidden py-2.5 text-white shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)] disabled:cursor-not-allowed disabled:opacity-70"
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              transition={{ type: "spring", stiffness: 350 }}
+                            >
+                              {isCurrentPlan ? "Plano ativo" : `Escolher ${p.name}`}
+                            </motion.button>
+                          );
+                        }
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => openCheckoutForPlan(p)}
+                            disabled={isCurrentPlan}
+                            className="w-full rounded-[var(--radius-sm)] border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition-colors hover:bg-[hsl(var(--surface-2))] disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+                          >
+                            {isCurrentPlan ? "Plano ativo" : `Escolher ${p.name}`}
+                          </button>
+                        );
+                      })()}
+                    </div>
                     </motion.div>
                   </motion.div>
                 </TiltCard>
@@ -604,6 +671,27 @@ export default function PlanosLanding() {
               Começar agora
             </motion.button>
           </div>
+        </div>
+      </section>
+
+      {/* Benefícios */}
+      <section className="mx-auto max-w-5xl px-4 py-16">
+        <h2 className="mb-10 text-center font-display text-2xl font-bold text-[hsl(var(--ink-1))] md:text-3xl">
+          Por que a nutrIAprova?
+        </h2>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          {benefits.map((b, i) => (
+            <div
+              key={i}
+              className="card-clinical flex gap-4 rounded-2xl p-6"
+            >
+              <div className="shrink-0">{b.icon}</div>
+              <div>
+                <h3 className="mb-1 font-display text-lg font-bold text-[hsl(var(--ink-1))]">{b.title}</h3>
+                <p className="font-sans text-sm text-[hsl(var(--ink-2))]">{b.description}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -752,12 +840,10 @@ export default function PlanosLanding() {
         </div>
       </section>
 
-      <CheckoutModal
+      <PlanCheckoutModal
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
-        amount={checkoutAmount}
-        planLabel={checkoutPlanLabel}
-        onApproved={() => navigate(homePath)}
+        plan={checkoutPlan}
       />
     </div>
   );

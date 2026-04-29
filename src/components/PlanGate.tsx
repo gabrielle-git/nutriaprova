@@ -50,7 +50,7 @@ export const TIER_CONFIG: Record<PlanTier, TierConfig> = {
     priceMonthly: 39.9,
   },
   premium: {
-    label: "Premium (Pro)",
+    label: "Premium",
     initialCoins: 120,
     aiCorrectionsPerDay: 10,
     canWithdraw: true,

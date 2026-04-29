@@ -9,6 +9,7 @@ type ProfileRow = {
   role: string | null;
   full_name: string | null;
   crn_number: string | null;
+  referred_by?: string | null;
 };
 
 function hasCompleteName(name: string | null | undefined): boolean {
@@ -83,14 +84,16 @@ export default function AuthCallback() {
         const pending = getPendingSignup();
         const { data: existingProfile } = await supabase
           .from("profiles")
-          .select("role, full_name, crn_number")
+          .select("role, full_name, crn_number, referred_by")
           .eq("user_id", user.id)
           .maybeSingle();
 
         const metaFullName = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? null) as string | null;
         const safeMetaRole = user.user_metadata?.role as string | undefined;
+        const safeMetaReferrer = (user.user_metadata?.referred_by ?? null) as string | null;
         const fallbackRole = normalizeRole(pending?.role ?? existingProfile?.role ?? safeMetaRole ?? "client");
         const fallbackName = pending?.fullName?.trim() || existingProfile?.full_name?.trim() || metaFullName?.trim() || null;
+        const fallbackReferrer = pending?.refCode?.trim() || existingProfile?.referred_by || safeMetaReferrer || null;
 
         const needsProfileUpsert =
           !existingProfile ||
@@ -107,6 +110,7 @@ export default function AuthCallback() {
               fallbackRole === "nutritionist"
                 ? (pending?.crnNumber ?? existingProfile?.crn_number ?? null)
                 : null,
+            referred_by: fallbackReferrer,
           };
           const { error: upErr } = await supabase
             .from("profiles")
@@ -123,7 +127,7 @@ export default function AuthCallback() {
         // 4) Lê o perfil final e valida nome completo obrigatório.
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role, full_name, crn_number")
+          .select("role, full_name, crn_number, referred_by")
           .eq("user_id", user.id)
           .maybeSingle();
 

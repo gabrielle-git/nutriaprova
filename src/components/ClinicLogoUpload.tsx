@@ -1,23 +1,25 @@
 import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Building2, Upload, Trash2, Lock } from "lucide-react";
+import { Building2, Upload, Trash2, Lock, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 
 const SUPREME_EMAIL = "helena.gaby31@gmail.com";
 
 export default function ClinicLogoUpload() {
   const { user, profile, refreshProfile } = useAuth();
+  const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
-  const planTier = (profile as any)?.plan_tier || "basic";
+  const planTier = (profile as any)?.plan_tier || "freemium";
   const hasAccess =
     planTier === "premium" || planTier === "clinic" || isSupreme;
-  const logoUrl = (profile as any)?.clinic_logo_url as string | undefined;
+  const logoUrl = ((profile as any)?.clinic_logo_url || (profile as any)?.logo_url) as string | undefined;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,9 +87,15 @@ export default function ClinicLogoUpload() {
       </CardHeader>
       <CardContent className="space-y-4">
         {!hasAccess ? (
-          <div className="rounded-lg border-2 border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            <Lock className="h-6 w-6 mx-auto mb-2 opacity-50" />
-            Faça upgrade para Premium ou Clínica para enviar sua logomarca nos PDFs.
+          <div className="rounded-lg border-2 border-dashed border-border p-6 text-center">
+            <Lock className="mx-auto mb-2 h-6 w-6 text-muted-foreground/70" />
+            <p className="text-sm text-muted-foreground">
+              Faça upgrade para Premium ou Clínica para anexar sua logomarca nos PDFs.
+            </p>
+            <Button size="sm" className="mt-4 emerald-gradient text-primary-foreground" onClick={() => navigate("/configuracoes?tab=plano")}>
+              <CreditCard className="mr-1.5 h-4 w-4" />
+              Ver planos para upgrade
+            </Button>
           </div>
         ) : (
           <>
@@ -119,10 +127,11 @@ export default function ClinicLogoUpload() {
               accept="image/png,image/jpeg,image/svg+xml"
               className="hidden"
               onChange={handleUpload}
+              disabled={!hasAccess || uploading}
             />
             <Button
               onClick={() => fileRef.current?.click()}
-              disabled={uploading}
+              disabled={!hasAccess || uploading}
               className="w-full gap-2"
               variant={logoUrl ? "outline" : "default"}
             >

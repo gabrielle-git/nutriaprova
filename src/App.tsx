@@ -47,6 +47,7 @@ function AnimatedRoutes() {
       {/* ── Públicas ─────────────────────────────────────────────── */}
       <Route path="/"                    element={<PageTransition><Index /></PageTransition>} />
       <Route path="/auth"                element={<PageTransition><Auth /></PageTransition>} />
+      <Route path="/cadastro"            element={<PageTransition><Auth /></PageTransition>} />
       <Route path="/auth/callback"       element={<PageTransition><AuthCallback /></PageTransition>} />
       <Route path="/confirmar-nome-completo" element={
         <RouteGuard>

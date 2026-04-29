@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import ClinicLogoUpload from "@/components/ClinicLogoUpload";
-import PlansModal from "@/components/PlansModal";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
@@ -27,6 +25,13 @@ const TIER_LABELS: Record<string, string> = {
   basic:    "Basic",
   premium:  "Premium",
   clinic:   "Clínica",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  nutritionist: "Nutri",
+  client: "Cliente",
+  personal_trainer: "Personal",
+  admin: "Admin",
 };
 
 function normalizeBirthDateInput(raw: string | null | undefined): string {
@@ -51,7 +56,6 @@ function birthDateFromProfile(profile: { birth_date?: string | null; client_data
 
 export default function Configuracoes() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { user, profile, refreshProfile } = useAuth();
   const { theme, setTheme } = useTheme();
 
@@ -70,15 +74,6 @@ export default function Configuracoes() {
   const [saving, setSaving]       = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [plansOpen, setPlansOpen] = useState(
-    // Abre direto na aba de planos se vier de ?tab=plano
-    searchParams.get("tab") === "plano",
-  );
-
-  useEffect(() => {
-    if (searchParams.get("tab") === "plano") setPlansOpen(true);
-  }, [searchParams]);
-
   // Perfil chega assíncrono do Auth — sincroniza nome e data (incl. birth_date ou client_data).
   useEffect(() => {
     if (!profile) return;
@@ -135,8 +130,6 @@ export default function Configuracoes() {
   const tier    = (profile as any)?.plan_tier as string | undefined;
   const SUPREME_EMAIL = "helena.gaby31@gmail.com";
   const isSupreme = user?.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
-  // Logomarca no PDF: Premium ou Clínica. Todos os nutris veem o bloco; upload trava por plano.
-  const canSeeClinicLogo = profile?.role === "nutritionist" || profile?.role === "admin";
 
   // ── Salvar dados da conta (nome + data de nascimento) ───────
   const handleSaveAccount = async () => {
@@ -404,7 +397,7 @@ export default function Configuracoes() {
                   <Shield className="h-4 w-4" />
                   <span>
                     Perfil:{" "}
-                    <strong className="text-foreground capitalize">{profile?.role || "—"}</strong>
+                    <strong className="text-foreground">{ROLE_LABELS[profile?.role ?? ""] ?? "—"}</strong>
                   </span>
                   {tier && (
                     <>
@@ -439,24 +432,14 @@ export default function Configuracoes() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={() => navigate("/planos")}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Ver Planos
-                    </Button>
-                    <Button
-                      onClick={() => setPlansOpen(true)}
-                      className="emerald-gradient text-primary-foreground gap-1.5"
-                      size="sm"
-                    >
-                      <CreditCard className="h-3.5 w-3.5" /> Fazer Upgrade
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 emerald-gradient text-primary-foreground shrink-0"
+                    onClick={() => navigate("/planos")}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Ver Planos
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -489,12 +472,6 @@ export default function Configuracoes() {
               </Card>
             )}
 
-            {/* Logo da clínica — exclusivo do Plano Clínica (white-label) */}
-            {canSeeClinicLogo && (
-              <div className="mt-4">
-                <ClinicLogoUpload />
-              </div>
-            )}
           </TabsContent>
 
           {/* ── ABA: APARÊNCIA ─────────────────────────────────── */}
@@ -581,12 +558,6 @@ export default function Configuracoes() {
           </TabsContent>
         </Tabs>
       </div>
-
-      <PlansModal
-        open={plansOpen}
-        onOpenChange={setPlansOpen}
-        currentTier={tier ?? "freemium"}
-      />
     </div>
   );
 }

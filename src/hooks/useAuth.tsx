@@ -3,6 +3,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { authCallbackUrl } from "@/lib/siteUrl";
 
 export interface Profile {
   id: string;
@@ -20,6 +21,10 @@ export interface Profile {
   plan_tier?: string;
   /** URL pública (storage) da foto de perfil */
   avatar_url?: string | null;
+  /** URL pública da logomarca usada no white-label dos PDFs */
+  clinic_logo_url?: string | null;
+  /** Alias legado para integração com payloads de PDF */
+  logo_url?: string | null;
   /** Coluna DATE no Postgres (YYYY-MM-DD) */
   birth_date?: string | null;
   /** Snapshot JSON do questionário / dados do cliente */
@@ -100,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
       options: {
         data: { full_name: fullName, role, crn_number: crnNumber ?? null },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: authCallbackUrl(),
       },
     });
     if (error) throw error;

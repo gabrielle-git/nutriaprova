@@ -1,3 +1,14 @@
+/**
+ * Webhooks n8n — geração/ajuste de dieta.
+ *
+ * Sincronização com o dashboard:
+ * - O fluxo do **cliente** (ex.: ClientOnboarding) pode chamar o webhook; o n8n deve persistir o
+ *   resultado em `public.diet_requests.ai_draft` via **Supabase REST** com a mesma **Project URL**
+ *   do app (`VITE_SUPABASE_URL`).
+ * - O **ID** no PATCH/UPSERT deve ser o UUID exato de `diet_requests.id` que o front lê (campos como
+ *   `request_id`, `diet_request_id` ou `target_id` no JSON devem coincidir com essa linha).
+ * - O painel do nutricionista **não** dispara geração aqui; só consome `ai_draft` depois do n8n.
+ */
 const N8N_GENERATE_WEBHOOK_URL = 'http://localhost:5678/webhook/gerar-dieta';
 const N8N_ADJUST_WEBHOOK_URL = 'http://localhost:5678/webhook/ajustar-dieta';
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Leaf, Mail, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { passwordResetRedirectUrl } from "@/lib/siteUrl";
 
 export default function RecuperarSenha() {
   const [email, setEmail] = useState("");
@@ -19,7 +20,7 @@ export default function RecuperarSenha() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: passwordResetRedirectUrl(),
       });
       if (error) throw error;
       setSent(true);

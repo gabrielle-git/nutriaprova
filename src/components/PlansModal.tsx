@@ -23,6 +23,10 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import PlanCheckoutModal, { type CheckoutPlanSelection } from "@/components/PlanCheckoutModal";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface PlansModalProps {
   open: boolean;
@@ -50,7 +54,7 @@ const PLANS = [
       "20 moedas iniciais",
       "Assinatura digital (nome + CRN) nos PDFs",
       "5 correções de IA por dia",
-      "R$ 15,00 por validação",
+      "Ganho de R$ 15,00 por dieta validada",
       "Saque via Pix",
     ],
     notIncluded: [
@@ -72,10 +76,10 @@ const PLANS = [
     coins: "120 moedas renovadas/mês",
     ai: "10 correções de IA por dia",
     benefits: [
+      "Tudo do plano Basic, e mais:",
       "120 moedas renovadas/mês",
       "10 correções de IA por dia",
       "Leads exclusivos",
-      "Assinatura digital (nome + CRN) nos PDFs",
       "Upload de logomarca (white-label)",
       "Comissões de afiliados (10%)",
     ],
@@ -93,13 +97,11 @@ const PLANS = [
     coins: "Moedas ilimitadas",
     ai: "IA ilimitada (sem cap diário)",
     benefits: [
+      "Tudo do plano Premium, e mais:",
       "Moedas ilimitadas",
       "IA ilimitada (sem cap diário)",
-      "Assinatura digital (nome + CRN) nos PDFs",
-      "White-label com logo da clínica",
-      "Até 4 nutricionistas no painel",
+      "Até 4 nutricionistas no painel, ideal para escalar sua experiência clínica",
       "Suporte prioritário + CRM",
-      "Todos os benefícios Premium",
     ],
     notIncluded: [] as string[],
   },
@@ -147,8 +149,54 @@ function ModalUrgencyHours() {
   );
 }
 
-export default function PlansModal({ open, onOpenChange, currentTier = "basic" }: PlansModalProps) {
+export default function PlansModal({ open, onOpenChange, currentTier = "freemium" }: PlansModalProps) {
+  const { user, refreshProfile } = useAuth();
   const [annual, setAnnual] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState<CheckoutPlanSelection | null>(null);
+  const [downgrading, setDowngrading] = useState(false);
+  const normalizedCurrentTier = String(currentTier || "freemium").toLowerCase();
+
+  const openCheckoutForPlan = (plan: (typeof PLANS)[number], amount: number) => {
+    setCheckoutPlan({ name: plan.name, tier: plan.id, amount });
+    setCheckoutOpen(true);
+  };
+
+  const handleDowngradeToFreemium = async () => {
+    if (!user) {
+      toast.error("Faça login para alterar seu plano.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Tem certeza que deseja cancelar a assinatura e voltar para o plano Freemium?",
+    );
+    if (!confirmed) return;
+
+    setDowngrading(true);
+    try {
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({ plan_tier: "freemium" })
+        .eq("user_id", user.id);
+      if (profileErr) throw profileErr;
+
+      const { error: txErr } = await supabase.from("transactions").insert({
+        user_id: user.id,
+        amount: 0,
+        type: "plan_downgrade",
+        description: "Downgrade para Freemium solicitado pelo usuário",
+      });
+      if (txErr) throw txErr;
+
+      await refreshProfile();
+      toast.success("Plano alterado para Freemium.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Não foi possível fazer o downgrade.";
+      toast.error(message);
+    } finally {
+      setDowngrading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,7 +278,7 @@ export default function PlansModal({ open, onOpenChange, currentTier = "basic" }
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3 md:items-stretch">
           {PLANS.map((plan, index) => {
             const Icon = plan.icon;
-            const isCurrent = currentTier === plan.id;
+            const isCurrent = normalizedCurrentTier === plan.id;
             const isHighlight = "highlight" in plan && plan.highlight;
             const linePrice = (() => {
               if (plan.isFree) {
@@ -331,34 +379,39 @@ export default function PlansModal({ open, onOpenChange, currentTier = "basic" }
                       </span>
                     </div>
                   </CardHeader>
-                  <CardContent className="mt-auto space-y-3">
-                    <ul className="space-y-2">
-                      {plan.benefits.map((b, fi) => (
-                        <motion.li
-                          key={b}
-                          className="flex items-start gap-2 font-sans text-sm text-[hsl(var(--ink-2))]"
-                          initial={{ opacity: 0, x: -16 }}
-                          whileInView={{ opacity: 1, x: 0 }}
-                          viewport={{ once: true, amount: 0.1 }}
-                          transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                        >
-                          <motion.span
-                            className="mt-0.5 inline-flex"
-                            initial={{ scale: 0, opacity: 0 }}
-                            whileInView={{ scale: 1, opacity: 1 }}
+                  <CardContent className="mt-auto flex flex-1 flex-col space-y-3">
+                    <ul className="flex-1 space-y-2">
+                      {plan.benefits.map((b, fi) => {
+                        const isCascadeHeader = b.startsWith("Tudo do plano");
+                        const isClinicTeamExclusive = b.includes("escalar sua experiência clínica");
+                        const featureHighlight = isCascadeHeader || isClinicTeamExclusive;
+                        return (
+                          <motion.li
+                            key={b}
+                            className="flex items-start gap-2 font-sans text-sm text-[hsl(var(--ink-2))]"
+                            initial={{ opacity: 0, x: -16 }}
+                            whileInView={{ opacity: 1, x: 0 }}
                             viewport={{ once: true, amount: 0.1 }}
-                            transition={{
-                              delay: fi * 0.06 + 0.1,
-                              type: "spring",
-                              stiffness: 500,
-                              damping: 22,
-                            }}
+                            transition={{ delay: fi * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                           >
-                            <Check className="h-4 w-4 flex-shrink-0 text-primary" strokeWidth={2.5} />
-                          </motion.span>
-                          <span>{b}</span>
-                        </motion.li>
-                      ))}
+                            <motion.span
+                              className="mt-0.5 inline-flex"
+                              initial={{ scale: 0, opacity: 0 }}
+                              whileInView={{ scale: 1, opacity: 1 }}
+                              viewport={{ once: true, amount: 0.1 }}
+                              transition={{
+                                delay: fi * 0.06 + 0.1,
+                                type: "spring",
+                                stiffness: 500,
+                                damping: 22,
+                              }}
+                            >
+                              <Check className={cn("h-4 w-4 flex-shrink-0", featureHighlight ? "text-emerald-600" : "text-primary")} strokeWidth={2.5} />
+                            </motion.span>
+                            <span className={cn(featureHighlight && "font-semibold text-primary leading-snug")}>{b}</span>
+                          </motion.li>
+                        );
+                      })}
                       {plan.notIncluded.map((b) => (
                         <li key={b} className="flex items-start gap-2 font-sans text-sm text-[hsl(var(--ink-3))]">
                           <X className="mt-0.5 h-4 w-4 flex-shrink-0 opacity-80" strokeWidth={2} />
@@ -366,32 +419,36 @@ export default function PlansModal({ open, onOpenChange, currentTier = "basic" }
                         </li>
                       ))}
                     </ul>
-                    {isHighlight ? (
-                      <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 350 }}
-                        className="mt-4"
-                      >
-                        <Button
-                          className={cn(
-                            "btn-primary btn-breathe border-beam relative w-full overflow-hidden shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)]",
-                          )}
-                          variant="default"
-                          disabled={isCurrent}
+                    <div className="mt-auto">
+                      {isHighlight ? (
+                        <motion.div
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          transition={{ type: "spring", stiffness: 350 }}
+                          className="pt-1"
                         >
-                          {isCurrent ? "Plano ativo" : `Assinar ${plan.name}`}
+                          <Button
+                            className={cn(
+                              "btn-primary btn-breathe border-beam relative w-full overflow-hidden shadow-none transition-shadow group-hover:shadow-[0_0_32px_hsl(158_72%_32%_/_0.5)]",
+                            )}
+                            variant="default"
+                            disabled={isCurrent}
+                            onClick={() => openCheckoutForPlan(plan, annual ? plan.priceMonthly * 0.8 : plan.priceMonthly)}
+                          >
+                            {isCurrent ? "Plano ativo" : `Escolher ${plan.name}`}
+                          </Button>
+                        </motion.div>
+                      ) : (
+                        <Button
+                          className="w-full border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
+                          variant="outline"
+                          disabled={isCurrent}
+                          onClick={() => openCheckoutForPlan(plan, annual ? plan.priceMonthly * 0.8 : plan.priceMonthly)}
+                        >
+                          {isCurrent ? "Plano ativo" : `Escolher ${plan.name}`}
                         </Button>
-                      </motion.div>
-                    ) : (
-                      <Button
-                        className="mt-4 w-full border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] text-slate-900 hover:bg-[hsl(var(--surface-2))] dark:bg-white dark:text-slate-900 dark:hover:bg-white/90"
-                        variant="outline"
-                        disabled={isCurrent}
-                      >
-                        {isCurrent ? "Plano ativo" : `Assinar ${plan.name}`}
-                      </Button>
-                    )}
+                      )}
+                    </div>
                   </CardContent>
                 </motion.div>
               </Card>
@@ -413,6 +470,19 @@ export default function PlansModal({ open, onOpenChange, currentTier = "basic" }
             );
           })}
         </div>
+
+        {normalizedCurrentTier !== "freemium" && (
+          <div className="mt-6 text-center">
+            <button
+              type="button"
+              className="text-xs text-[hsl(var(--ink-3))] underline underline-offset-4 hover:text-destructive disabled:opacity-60"
+              onClick={handleDowngradeToFreemium}
+              disabled={downgrading}
+            >
+              {downgrading ? "Processando cancelamento..." : "Cancelar assinatura (voltar para Freemium)"}
+            </button>
+          </div>
+        )}
 
         <div className="mt-6 card-clinical rounded-[var(--radius)] p-4">
           <div className="mb-3 flex items-center gap-2">
@@ -436,6 +506,12 @@ export default function PlansModal({ open, onOpenChange, currentTier = "basic" }
           </p>
         </div>
       </DialogContent>
+      <PlanCheckoutModal
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        plan={checkoutPlan}
+        onApproved={() => onOpenChange(false)}
+      />
     </Dialog>
   );
 }

@@ -518,6 +518,15 @@ export default function ClientDashboard() {
     };
   }, [user, refreshCurrentPlan]);
 
+  /** Reforço: polling 5s — Realtime nem sempre entrega (n8n via servidor, dev, etc.). */
+  useEffect(() => {
+    if (!user) return;
+    const tick = window.setInterval(() => {
+      void refreshCurrentPlan();
+    }, 5000);
+    return () => clearInterval(tick);
+  }, [user, refreshCurrentPlan]);
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -1023,18 +1032,20 @@ function CurrentPlanTab({
               Status
             </p>
             <p className="font-display font-semibold text-sm text-[hsl(var(--ink-1))]">
-              {requestStatus === "in_review" || requestStatus === "awaiting_validation"
-                ? "Seu plano está em análise pelo nutricionista."
-                : "Seu pagamento foi aprovado e agora estamos processando seu plano com IA."}
+              {plan
+                ? "Rascunho da IA pronto — falta a validação do nutricionista."
+                : requestStatus === "in_review" || requestStatus === "awaiting_validation"
+                  ? "Seu plano está em análise pelo nutricionista."
+                  : "Seu pagamento foi aprovado e estamos preparando seu plano com IA."}
             </p>
             <p className="text-xs text-[hsl(var(--ink-2))] mt-0.5">
-              Acompanhe o tracker de status até a liberação da versão completa.
+              {plan
+                ? "O que você vê abaixo é uma prévia gerada pela IA. O nutricionista pode ajustar antes de liberar a versão final."
+                : "Assim que o rascunho estiver salvo, a tela atualiza automaticamente."}
             </p>
           </div>
           <Badge variant="outline" className="shrink-0 border-[hsl(var(--surface-3))] uppercase text-[10px] tracking-wider">
-            {requestStatus === "in_review" || requestStatus === "awaiting_validation"
-              ? "Em análise"
-              : "Processando"}
+            {plan ? "Rascunho" : requestStatus === "in_review" || requestStatus === "awaiting_validation" ? "Em análise" : "Processando"}
           </Badge>
         </div>
       )}

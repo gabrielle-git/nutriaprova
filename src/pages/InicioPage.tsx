@@ -11,7 +11,7 @@ import {
   UtensilsCrossed,
   ClipboardList,
   Crown,
-  Sparkles,
+  Settings,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import { Button } from "@/components/ui/button";
@@ -194,17 +194,17 @@ export default function InicioPage() {
 
           <motion.div {...fade} transition={{ delay: 0.12, duration: 0.35 }} className="mt-6 grid gap-4 sm:grid-cols-2">
             <BentoCard
-              title="Planos e assinatura"
+              title="Gerenciar planos e assinaturas"
               description="Upgrade, cobrança e vitrine de planos."
               icon={CreditCard}
               iconClassName="text-[hsl(var(--coin-gold))]"
-              onClick={() => navigate("/configuracoes?tab=plano")}
+              onClick={() => navigate("/planos")}
             />
             <BentoCard
-              title="Ver vitrine pública"
-              description="Página de planos para nutricionistas."
-              icon={Sparkles}
-              onClick={() => navigate("/planos")}
+              title="Configurações"
+              description="Ajuste seu perfil, CRN e preferências."
+              icon={Settings}
+              onClick={() => navigate("/configuracoes")}
             />
           </motion.div>
 

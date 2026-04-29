@@ -49,7 +49,7 @@ const COIN_STEPS = [
 
 const PLAN_COMPARE = [
   { name: "Freemium", coins: "5",   ia: "—",         saque: "🔒 Crédito p/ upgrade", price: "Grátis"       },
-  { name: "Basic",    coins: "20",  ia: "5/dia",      saque: "✅ Disponível",         price: "R$ 49,90/mês" },
+  { name: "Basic",    coins: "20",  ia: "5/dia",      saque: "✅ Disponível",         price: "R$ 39,90/mês" },
   { name: "Premium",  coins: "120", ia: "10/dia",     saque: "✅ Disponível",         price: "R$ 99,90/mês" },
   { name: "Clínica",  coins: "∞",   ia: "Ilimitado",  saque: "✅ Disponível",         price: "R$ 199,90/mês"},
 ];

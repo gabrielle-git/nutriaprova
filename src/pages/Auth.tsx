@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { maskPhone, unmaskPhone, maskCRN, isCRNValid } from "@/lib/masks";
 import { setPendingSignup, clearPendingSignup } from "@/lib/pendingSignup";
 import { trackInviteEvent } from "@/services/inviteAnalytics";
+import { authCallbackUrl } from "@/lib/siteUrl";
 
 type AuthMethod = "email" | "phone";
 type AuthStep   = "form" | "otp";
@@ -386,7 +387,7 @@ export default function Auth() {
     googleClickLockRef.current = true;
     setGoogleLoading(true);
     try {
-      const redirectTo = `${window.location.origin}/auth/callback`;
+      const redirectTo = authCallbackUrl();
 
       // `signInWithOAuth` ignora `options.data`; persistimos a intenção para o callback reconciliar.
       if (!isLogin) {
@@ -543,7 +544,7 @@ export default function Auth() {
         email: email.trim(),
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: authCallbackUrl(),
           data: {
             full_name: normalizedFullName,
             role: role,
