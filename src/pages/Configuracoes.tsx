@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf, ArrowLeft, User, Sun, Moon, Monitor, Bell,
-  Shield, Save, CreditCard, Lock, Wallet, ExternalLink, Camera,
+  Shield, Save, CreditCard, Lock, Wallet, ExternalLink, Camera, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,7 +56,7 @@ function birthDateFromProfile(profile: { birth_date?: string | null; client_data
 
 export default function Configuracoes() {
   const navigate = useNavigate();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, signOut } = useAuth();
   const { theme, setTheme } = useTheme();
 
   const [fullName, setFullName]   = useState(profile?.full_name || "");
@@ -72,6 +72,7 @@ export default function Configuracoes() {
   // contam como "preenchido no banco".
   const birthDateLocked = !!((profile as any)?.birth_date);
   const [saving, setSaving]       = useState(false);
+  const [accountDeleting, setAccountDeleting] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   // Perfil chega assíncrono do Auth — sincroniza nome e data (incl. birth_date ou client_data).
@@ -157,6 +158,35 @@ export default function Configuracoes() {
       toast.success("Dados da conta atualizados com sucesso!");
     }
     setSaving(false);
+  };
+
+  const handleRequestAccountDeletion = async () => {
+    if (!user) return;
+    const ok = window.confirm(
+      "Marcar sua conta para exclusão?\n\n" +
+        "Seu perfil será apenas marcado (soft delete). Você tem até 30 dias para entrar de novo — ao fazer login, a conta volta a ficar ativa. " +
+        "Não removemos o login na hora; você será desconectado após confirmar.",
+    );
+    if (!ok) return;
+
+    setAccountDeleting(true);
+    try {
+      const { error } = await supabase.rpc("soft_delete_own_profile");
+      if (error) {
+        toast.error("Não foi possível marcar a exclusão da conta.", {
+          description: error.message,
+        });
+        return;
+      }
+      toast.success("Conta marcada para exclusão", {
+        description:
+          "Você foi desconectado. Entre de novo em até 30 dias para reativar automaticamente.",
+      });
+      await signOut();
+      navigate("/auth", { replace: true });
+    } finally {
+      setAccountDeleting(false);
+    }
   };
 
   const getInitialsForAvatar = (name: string, email: string) => {
@@ -471,6 +501,36 @@ export default function Configuracoes() {
                 </CardContent>
               </Card>
             )}
+
+            <Card className="glass-card border-destructive/35">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-display text-lg text-destructive flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Excluir conta
+                </CardTitle>
+                <CardDescription>
+                  Soft delete com carência de 30 dias: marcamos seu perfil, sem apagar o login na hora.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Ao confirmar, sua conta é marcada para exclusão e você sai do aplicativo. Se voltar a
+                  entrar dentro de 30 dias, o sistema reativa seu perfil automaticamente. A remoção
+                  definitiva no serviço de login pode ser concluída depois desse prazo (configure um job
+                  no Supabase se quiser automatizar).
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="gap-2"
+                  disabled={accountDeleting || !user}
+                  onClick={handleRequestAccountDeletion}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {accountDeleting ? "Processando…" : "Marcar exclusão da minha conta"}
+                </Button>
+              </CardContent>
+            </Card>
 
           </TabsContent>
 

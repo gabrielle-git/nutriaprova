@@ -1020,11 +1020,12 @@ function CurrentPlanTab({
 
   // state.status === "ready"
   const { plan, requestStatus, isCompleted } = state;
-  const shouldShowPaywall = requestStatus === "awaiting_payment";
+  const shouldShowPaywall =
+    requestStatus === "awaiting_payment" || requestStatus === "processing";
 
   return (
     <div className="space-y-4">
-      {!isCompleted && requestStatus !== "awaiting_payment" && (
+      {!isCompleted && !shouldShowPaywall && (
         <div className="card-clinical border-primary/20 bg-[hsl(var(--surface-0))] p-4 flex items-start gap-3">
           <Lock className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
@@ -1034,9 +1035,11 @@ function CurrentPlanTab({
             <p className="font-display font-semibold text-sm text-[hsl(var(--ink-1))]">
               {plan
                 ? "Rascunho da IA pronto — falta a validação do nutricionista."
-                : requestStatus === "in_review" || requestStatus === "awaiting_validation"
-                  ? "Seu plano está em análise pelo nutricionista."
-                  : "Seu pagamento foi aprovado e estamos preparando seu plano com IA."}
+                : requestStatus === "processing"
+                  ? "Estamos gerando seu plano com IA. Esta tela atualiza sozinha quando o rascunho estiver pronto."
+                  : requestStatus === "in_review" || requestStatus === "awaiting_validation"
+                    ? "Seu plano está em análise pelo nutricionista."
+                    : "Seu pagamento foi aprovado e estamos preparando seu plano com IA."}
             </p>
             <p className="text-xs text-[hsl(var(--ink-2))] mt-0.5">
               {plan
@@ -1072,6 +1075,13 @@ function CurrentPlanTab({
                   <p className="mt-3 text-sm text-[hsl(var(--ink-2))]">
                     Desbloqueie agora para começar sua transformação.
                   </p>
+                  {requestStatus === "processing" && (
+                    <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-left text-xs leading-relaxed text-[hsl(var(--ink-1))]">
+                      O nutricionista só passa a ver seu pedido no painel depois que você conclui o
+                      pagamento. Se você acabou de enviar o questionário, finalize o desbloqueio aqui —
+                      sem isso, a equipe não recebe o pedido na fila de validação.
+                    </p>
+                  )}
                   <Button
                     type="button"
                     size="lg"

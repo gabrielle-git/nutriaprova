@@ -2,6 +2,7 @@ import {
   createContext, useCallback, useContext, useEffect, useState, type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { authCallbackUrl } from "@/lib/siteUrl";
 
@@ -29,6 +30,8 @@ export interface Profile {
   birth_date?: string | null;
   /** Snapshot JSON do questionário / dados do cliente */
   client_data?: Record<string, unknown> | null;
+  /** Soft delete — se preenchido, o login limpa o campo e recupera a conta */
+  deleted_at?: string | null;
 }
 
 interface AuthContextType {
@@ -57,6 +60,32 @@ async function loadProfile(userId: string): Promise<Profile | null> {
   return (data as Profile | null) ?? null;
 }
 
+/** Se o perfil estava em soft delete, reativa e avisa (carência / recuperação no login). */
+async function loadProfileRecoveringSoftDelete(userId: string): Promise<Profile | null> {
+  let prof = await loadProfile(userId);
+  if (!prof?.deleted_at) return prof;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+
+  if (error) {
+    console.warn("[useAuth] recuperação de soft delete:", error.message);
+    return prof;
+  }
+
+  toast.success("Conta recuperada", {
+    description:
+      "Sua conta estava marcada para exclusão. Ao entrar de novo, ela foi reativada automaticamente. Você tem até 30 dias após pedir a exclusão para voltar assim; depois disso, a remoção definitiva pode ser feita pelo sistema.",
+  });
+
+  return (await loadProfile(userId)) ?? prof;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user,    setUser]    = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -67,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(next);
     setUser(next?.user ?? null);
     if (next?.user) {
-      setProfile(await loadProfile(next.user.id));
+      setProfile(await loadProfileRecoveringSoftDelete(next.user.id));
     } else {
       setProfile(null);
     }
@@ -96,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     if (!user) return;
-    setProfile(await loadProfile(user.id));
+    setProfile(await loadProfileRecoveringSoftDelete(user.id));
   }, [user]);
 
   const signUp: AuthContextType["signUp"] = async (email, password, fullName, role, crnNumber) => {

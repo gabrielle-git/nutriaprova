@@ -1,3 +1,7 @@
+// TODO(equipe-clinica): adicionar aba "Equipe" gated por planTier === "clinic"
+// que liste membros, mostre slots disponíveis (groupSize do TIER_CONFIG = 4),
+// e permita convite por e-mail. Aguarda decisão sobre schema (tabela clinics +
+// clinic_members) e modelo de cobrança/permissão. Ver Bug 4 do prompt original.
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnimationControls } from "framer-motion";

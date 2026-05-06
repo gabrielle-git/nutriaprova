@@ -11,9 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, ArrowLeft, Sparkles, Lock, Check, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { generateDietPlan, type ClientData, type DietPlan } from "@/services/n8nService";
+import { triggerGenerateDietWebhook, type ClientData, type DietPlan } from "@/services/n8nService";
 import { toast } from "sonner";
-import DietPlanCard from "./DietPlanCard";
 import PremiumDietPlanView from "./PremiumDietPlanView";
 import ClientCompletedDiet from "./ClientCompletedDiet";
 import RecompraCard from "./RecompraCard";
@@ -145,7 +144,7 @@ export default function ClientOnboarding() {
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
     return age;
   };
-  // Somente hidrata formulário a partir do Supabase. Não disparar generateDietPlan / webhook n8n aqui.
+  // Somente hidrata formulário a partir do Supabase. Não disparar webhook n8n aqui.
   useEffect(() => {
     if (!user) return;
 
@@ -347,14 +346,26 @@ export default function ClientOnboarding() {
     };
 
     try {
+      // ANTES do insert: descobre o nutri assignado (referred_by do profile do
+      // cliente). Fazer isso ANTES do INSERT — em vez de num bloco async pós-webhook
+      // como estava antes — garante que o n8n recebe o request_id já com o
+      // nutri certo gravado, eliminando race condition.
+      const { data: myProfile } = await (supabase as any)
+        .from("profiles")
+        .select("referred_by, client_data")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const assignedNutriId = (myProfile as any)?.referred_by ?? null;
+
       // 1) Registra a tentativa imediatamente no funil para recuperação de carrinho.
       const { data: createdRequest, error: createError } = await supabase
         .from("diet_requests")
         .insert({
           client_id: user.id,
           client_data: dataToSend as any,
-          status: "awaiting_payment",
-          notes: "Questionário enviado. Aguardando processamento da IA.",
+          status: "processing",
+          assigned_nutritionist_id: assignedNutriId,
+          notes: "Questionário enviado. Processando com IA.",
         } as any)
         .select("id")
         .single();
@@ -369,14 +380,13 @@ export default function ClientOnboarding() {
       const requestId = String(createdRequest.id);
       setDietRequestId(requestId);
 
-      // 2) Chamada à IA via n8n — protegida por try/catch dedicado para que
-      //    uma falha de rede/timeout não quebre a árvore de componentes.
-      let plan: DietPlan;
+      // 2) Aciona o n8n — sucesso = HTTP OK sem ler JSON no corpo; o plano chega pelo Supabase.
       try {
-        plan = await generateDietPlan(dataToSend);
-      } catch (aiError: any) {
-        // Mensagem técnica (ex: "Failed to fetch") permanece apenas no console
-        // para debug — o usuário final vê sempre um texto amigável e estável.
+        await triggerGenerateDietWebhook(dataToSend, {
+          request_id: requestId,
+          diet_request_id: requestId,
+        });
+      } catch (aiError: unknown) {
         console.error("[ClientOnboarding] n8nService falhou:", aiError);
         toast.error(
           "Sistema indisponível: Não foi possível gerar o plano no momento. Tente novamente.",
@@ -384,57 +394,51 @@ export default function ClientOnboarding() {
         await supabase
           .from("diet_requests")
           .update({
-            notes: "Falha ao gerar dieta via IA. Tentar novamente.",
+            notes: "Falha ao acionar IA. Tentar novamente.",
           } as any)
           .eq("id", requestId);
         setStep(2);
         return;
       }
 
-      // 3) Atualiza o registro já criado com o plano pronto para paywall.
-      try {
-        const { data: myProfile } = await (supabase as any)
-          .from("profiles")
-          .select("referred_by, client_data")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        const assigned = (myProfile as any)?.referred_by ?? null;
-        const { error: updateRequestError } = await supabase
-          .from("diet_requests")
-          .update({
-            ai_draft: plan as any,
-            assigned_nutritionist_id: assigned,
-            notes: "Plano gerado. Aguardando pagamento para desbloqueio.",
-          } as any)
-          .eq("id", requestId);
+      toast.success("Recebemos seu pedido! Abrindo seu painel…");
+      navigate("/dashboard", { replace: true });
 
-        if (updateRequestError) {
-          console.error("[ClientOnboarding] diet_requests update error:", updateRequestError);
-          toast.error("Plano gerado, mas houve erro ao salvar. Tente novamente.");
+      // 3) Persistência pós-webhook em segundo plano (não atrasa o redirect).
+      //    `assigned_nutritionist_id` agora é gravado no INSERT acima — aqui só
+      //    atualizamos a copy da nota e o cache do client_data no profile.
+      void (async () => {
+        try {
+          const { error: updateRequestError } = await supabase
+            .from("diet_requests")
+            .update({
+              notes: "IA gerando seu plano. Acompanhe no dashboard — atualiza automaticamente.",
+            } as any)
+            .eq("id", requestId);
+
+          if (updateRequestError) {
+            console.error("[ClientOnboarding] diet_requests update error:", updateRequestError);
+          }
+
+          const previousClientData = ((myProfile as any)?.client_data ?? {}) as Record<string, any>;
+          const { error: profileError } = await (supabase as any)
+            .from("profiles")
+            .update({
+              birth_date: dataToSend.birthDate,
+              client_data: {
+                ...previousClientData,
+                ...dataToSend,
+              },
+            })
+            .eq("user_id", user.id);
+
+          if (profileError) {
+            console.warn("[handleGenerate] profiles client_data update:", profileError.message);
+          }
+        } catch (e) {
+          console.warn("[ClientOnboarding] post-webhook side effects:", e);
         }
-
-        const previousClientData = ((myProfile as any)?.client_data ?? {}) as Record<string, any>;
-        const { error: profileError } = await (supabase as any)
-          .from("profiles")
-          .update({
-            birth_date: dataToSend.birthDate,
-            client_data: {
-              ...previousClientData,
-              ...dataToSend,
-            },
-          })
-          .eq("user_id", user.id);
-
-        if (profileError) {
-          console.warn("[handleGenerate] profiles client_data update:", profileError.message);
-        }
-        toast.success("Plano gerado! Desbloqueie para continuar.");
-      } catch (dbError: any) {
-        console.error("[ClientOnboarding] Supabase falhou:", dbError);
-        toast.error("Plano gerado, mas não conseguimos salvar. Tente novamente.");
-      }
-
-      setDietPlan(plan);
+      })();
     } catch (err: any) {
       // Safety net — qualquer erro inesperado cai aqui e vira toast vermelho
       // em vez de quebrar a tela inteira. Nunca vazamos a mensagem crua do

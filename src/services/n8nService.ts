@@ -8,9 +8,39 @@
  * - O **ID** no PATCH/UPSERT deve ser o UUID exato de `diet_requests.id` que o front lê (campos como
  *   `request_id`, `diet_request_id` ou `target_id` no JSON devem coincidir com essa linha).
  * - O painel do nutricionista **não** dispara geração aqui; só consome `ai_draft` depois do n8n.
+ *
+ * Atenção ao path `/webhook-test/...` vs `/webhook/...`:
+ * - `/webhook-test/<id>` SÓ responde quando o usuário do n8n está com a aba do
+ *   editor aberta no botão "Listen for test event". Em produção (ou com o
+ *   Docker rodando sem ninguém clicando "Listen"), esse path devolve 404 e o
+ *   plano nunca é gerado.
+ * - `/webhook/<id>` é o endpoint persistente, que só passa a existir DEPOIS de
+ *   o workflow ser ativado (toggle "Active" no canto superior direito do n8n).
+ *
+ * Configure a URL final em `.env.local`:
+ *   VITE_N8N_GENERATE_WEBHOOK_URL=http://localhost:5678/webhook/gerar-dieta
+ *   VITE_N8N_ADJUST_WEBHOOK_URL=http://localhost:5678/webhook/ajustar-dieta
  */
-const N8N_GENERATE_WEBHOOK_URL = 'http://localhost:5678/webhook/gerar-dieta';
-const N8N_ADJUST_WEBHOOK_URL = 'http://localhost:5678/webhook/ajustar-dieta';
+const N8N_GENERATE_WEBHOOK_URL =
+  (typeof import.meta.env.VITE_N8N_GENERATE_WEBHOOK_URL === "string" &&
+    import.meta.env.VITE_N8N_GENERATE_WEBHOOK_URL.trim()) ||
+  "http://localhost:5678/webhook/gerar-dieta";
+const N8N_ADJUST_WEBHOOK_URL =
+  (typeof import.meta.env.VITE_N8N_ADJUST_WEBHOOK_URL === "string" &&
+    import.meta.env.VITE_N8N_ADJUST_WEBHOOK_URL.trim()) ||
+  "http://localhost:5678/webhook/ajustar-dieta";
+
+if (import.meta.env.DEV) {
+  // Aviso explícito em dev se alguém esquecer no path de "test" — esse foi
+  // exatamente o motivo do "n8n não gera nada em produção" no início do MVP.
+  if (N8N_GENERATE_WEBHOOK_URL.includes("/webhook-test/")) {
+    console.warn(
+      "[n8nService] VITE_N8N_GENERATE_WEBHOOK_URL aponta para /webhook-test/ — " +
+        "esse endpoint só funciona enquanto o n8n está com 'Listen for test event' ativo. " +
+        "Troque para /webhook/<id> e ative o workflow para funcionar de verdade.",
+    );
+  }
+}
 
 export interface ClientData {
   age: number;
@@ -64,6 +94,7 @@ async function logN8nError(label: string, error: unknown, data: unknown) {
 
 async function postToN8n(url: string, payload: Record<string, unknown>) {
   // Contrato explícito com o n8n: sempre POST com JSON no body.
+  console.log("URL_CHAMADA:", url);
   return fetch(url, {
     method: 'POST',
     headers: {
@@ -73,28 +104,29 @@ async function postToN8n(url: string, payload: Record<string, unknown>) {
   });
 }
 
-export async function generateDietPlan(clientData: ClientData): Promise<DietPlan> {
+/**
+ * Dispara o webhook de geração. Sucesso = HTTP 200 (ou outro 2xx). Não lê nem interpreta o corpo.
+ * O plano é persistido pelo próprio fluxo n8n → Supabase.
+ */
+export async function triggerGenerateDietWebhook(
+  clientData: ClientData,
+  meta?: Record<string, unknown>,
+): Promise<void> {
   try {
     const response = await postToN8n(N8N_GENERATE_WEBHOOK_URL, {
       action: 'generate',
       clientData,
+      ...meta,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-
-    const data = await response.json();
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data as DietPlan;
+    // Sucesso: não consumimos o corpo — o n8n responde antes do plano existir.
   } catch (error) {
-    await logN8nError('generateDietPlan', error, { clientData });
-    throw new Error(error instanceof Error ? error.message : 'Erro ao gerar plano alimentar');
+    await logN8nError('triggerGenerateDietWebhook', error, { clientData, meta });
+    throw new Error(error instanceof Error ? error.message : 'Erro ao acionar geração do plano');
   }
 }
 

@@ -516,6 +516,19 @@ export default function Auth() {
   };
 
   // ── Cadastro tradicional e-mail + senha ───────────────────────────────────
+  // Fluxo:
+  //   1. supabase.auth.signUp cria a conta e dispara o e-mail de confirmação.
+  //   2. Se "Confirm email" está LIGADO no Supabase (recomendado), data.session
+  //      vem null e o e-mail enviado contém o código de 6 dígitos (desde que o
+  //      template "Confirm signup" use {{ .Token }}). Roteamos para a tela de
+  //      OTP, onde verifyOtp({ type: "signup" }) confirma o e-mail E faz login
+  //      na mesma chamada.
+  //   3. Se "Confirm email" estiver DESLIGADO, signUp já devolve sessão; nesse
+  //      caso seguimos direto pro callback como antes.
+  //
+  // Importante: NÃO chamamos signInWithPassword automaticamente após signUp.
+  // Isso bypassava a confirmação de e-mail — era a causa raiz do bug "não chega
+  // código no e-mail" (o app simplesmente nunca esperava o usuário confirmar).
   const handleSignUp = async () => {
     if (googleLoading) return;
 
@@ -531,8 +544,6 @@ export default function Auth() {
     }
     setLoading(true);
     try {
-      // Mantém a intenção para o callback reconciliar no profile caso o trigger do
-      // banco não preencha o nome completo corretamente.
       setPendingSignup({
         role,
         fullName: normalizedFullName,
@@ -540,8 +551,9 @@ export default function Auth() {
         refCode: refCode || null,
       });
 
+      const trimmedEmail = email.trim();
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
         options: {
           emailRedirectTo: authCallbackUrl(),
@@ -555,20 +567,24 @@ export default function Auth() {
       });
       if (error) throw error;
 
-      // Com "Confirm email" DESATIVADO no Supabase, o signUp já devolve uma
-      // sessão ativa — não precisamos passar pela tela de OTP. Se por qualquer
-      // motivo a sessão não vier (ex.: Confirm email reativado no painel),
-      // tenta autenticar com a senha recém-cadastrada para garantir o login
-      // automático. Em ambos os casos, encaminha direto para /auth/callback,
-      // que decide a rota correta por papel.
+      // Sessão null = "Confirm email" ligado no Supabase. O e-mail com o token
+      // de 6 dígitos já foi enviado pelo próprio signUp. Roteia para a tela
+      // de OTP. A função verifyOtp existente já trata `type: "signup"`
+      // corretamente quando otpIsSignup === true.
       if (!data.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
+        setOtpSentTo(trimmedEmail);
+        setOtpMethod("email");
+        setOtpIsSignup(true);
+        setStep("otp");
+        toast.success("Código de confirmação enviado!", {
+          description: "Verifique seu e-mail (incluindo a caixa de spam).",
         });
-        if (signInError) throw signInError;
+        setSubmitPulse("success");
+        return;
       }
 
+      // Caminho alternativo: "Confirm email" desligado no Supabase. signUp já
+      // devolveu sessão, então segue direto para o callback.
       toast.success("Conta criada com sucesso!");
       setSubmitPulse("success");
       navigate("/auth/callback", { replace: true });
@@ -586,6 +602,10 @@ export default function Auth() {
         setEmailServiceNotice(true);
         toast.error("E-mail temporariamente indisponível", {
           description: "Use Entrar com Google enquanto o serviço de e-mail está em manutenção.",
+        });
+      } else if (low.includes("user already registered") || low.includes("already registered")) {
+        toast.error("E-mail já cadastrado", {
+          description: "Faça login ou use 'Recuperar senha' se esqueceu a senha.",
         });
       } else {
         toast.error(msg);

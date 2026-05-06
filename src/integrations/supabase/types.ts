@@ -211,6 +211,7 @@ export type Database = {
           birth_date: string | null
           clinic_logo_url: string | null
           created_at: string
+          deleted_at: string | null
           credits: number
           crn_number: string | null
           full_name: string
@@ -232,6 +233,7 @@ export type Database = {
           birth_date?: string | null
           clinic_logo_url?: string | null
           created_at?: string
+          deleted_at?: string | null
           credits?: number
           crn_number?: string | null
           full_name?: string
@@ -253,6 +255,7 @@ export type Database = {
           birth_date?: string | null
           clinic_logo_url?: string | null
           created_at?: string
+          deleted_at?: string | null
           credits?: number
           crn_number?: string | null
           full_name?: string
@@ -327,7 +330,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      soft_delete_own_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
