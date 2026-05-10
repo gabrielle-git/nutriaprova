@@ -3,8 +3,8 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Flame, Droplets, Wheat, Utensils, ChefHat, Lightbulb, Shield, Camera, Instagram } from "lucide-react";
 import type { DietPlan } from "@/services/n8nService";
-import GroceryChecklist from "./GroceryChecklist";
 import { toast } from "sonner";
+import AiDraftMarkdown, { isStructuredDietPlan, markdownTextFromAiDraft } from "./AiDraftMarkdown";
 
 const MEAL_LABELS: Record<string, { label: string; emoji: string; time: string }> = {
   cafeDaManha: { label: "Café da Manhã", emoji: "☀️", time: "07:00" },
@@ -15,7 +15,8 @@ const MEAL_LABELS: Record<string, { label: string; emoji: string; time: string }
 };
 
 interface PremiumDietPlanViewProps {
-  plan?: DietPlan | null;
+  /** JSON estruturado ({@link DietPlan}), texto/markdown bruto ou objeto legado sem `meals`. */
+  plan?: DietPlan | string | null;
   nutritionistName?: string;
   crnNumber?: string;
   specialty?: string;
@@ -37,7 +38,7 @@ export default function PremiumDietPlanView({
   clinicLogoUrl = null,
   professionalTier = null,
 }: PremiumDietPlanViewProps) {
-  if (!plan || !plan.meals) {
+  if (plan == null || plan === "") {
     return (
       <div className="card-clinical p-8 md:p-10">
         <div className="flex flex-col items-center gap-3 text-center">
@@ -45,6 +46,27 @@ export default function PremiumDietPlanView({
           <p className="font-display text-base font-semibold text-[hsl(var(--ink-1))]">Preparando seu plano alimentar...</p>
           <p className="max-w-md text-sm text-[hsl(var(--ink-2))]">
             Estamos aguardando os dados da dieta para renderizar as refeições e os macronutrientes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const markdownText = markdownTextFromAiDraft(plan);
+  if (markdownText) {
+    return (
+      <div className="space-y-4">
+        <AiDraftMarkdown text={markdownText} />
+      </div>
+    );
+  }
+
+  if (!isStructuredDietPlan(plan)) {
+    return (
+      <div className="card-clinical p-8 md:p-10">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <p className="max-w-md text-sm text-[hsl(var(--ink-2))]">
+            Não foi possível exibir este plano neste formato. Entre em contato com seu nutricionista.
           </p>
         </div>
       </div>
@@ -200,7 +222,7 @@ export default function PremiumDietPlanView({
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-xs text-muted-foreground hover:text-primary gap-1 h-7"
+                            className="text-xs text-muted-foreground hover:text-primary gap-1 h-7 print:hidden"
                             onClick={() => {/* Photo upload placeholder */}}
                           >
                             <Camera className="h-3.5 w-3.5" />
@@ -214,7 +236,7 @@ export default function PremiumDietPlanView({
                       </div>
 
                       {/* Photo placeholder area */}
-                      <div className="mx-5 mt-4 rounded-lg border-2 border-dashed border-border/50 bg-muted/30 p-4 flex items-center justify-center gap-2 text-muted-foreground">
+                      <div className="mx-5 mt-4 rounded-lg border-2 border-dashed border-border/50 bg-muted/30 p-4 flex items-center justify-center gap-2 text-muted-foreground print:hidden">
                         <Camera className="h-5 w-5" />
                         <span className="text-xs">Foto do prato (opcional)</span>
                       </div>
@@ -286,15 +308,6 @@ export default function PremiumDietPlanView({
             </div>
 
             <Separator className="mx-6" />
-
-            {/* ===== GROCERY LIST ===== */}
-            <div className="px-6 py-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-1 h-5 rounded-full emerald-gradient" />
-                <h2 className="font-display font-bold text-sm uppercase tracking-wider text-foreground">Lista de Compras Automatizada</h2>
-              </div>
-              <GroceryChecklist dietPlan={plan} />
-            </div>
 
             {/* ===== NOTES ===== */}
             {plan.notes && (
@@ -373,7 +386,7 @@ export default function PremiumDietPlanView({
 
             {/* ===== SHARE + FOOTER ===== */}
             {isCompleted && (
-              <div className="px-6 py-4 flex justify-center">
+              <div className="px-6 py-4 flex justify-center print:hidden">
                 <Button
                   variant="outline"
                   className="gap-2 border-primary/30 text-primary hover:bg-primary/10"

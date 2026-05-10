@@ -104,10 +104,13 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?defina N8N_ENCRYPTION_KEY no .env.local}
 
       # Qualidade de vida.
+      # Qualidade de vida.
       GENERIC_TIMEZONE: ${TZ:-America/Sao_Paulo}
       TZ: ${TZ:-America/Sao_Paulo}
       N8N_LOG_LEVEL: info
       N8N_RUNNERS_ENABLED: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n-workflows:/home/node/.n8n/workflows

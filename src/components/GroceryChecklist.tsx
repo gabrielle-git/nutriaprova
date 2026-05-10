@@ -4,11 +4,23 @@ import { Badge } from "@/components/ui/badge";
 import type { DietPlan } from "@/services/n8nService";
 import { cn } from "@/lib/utils";
 
+function GroceryUnavailable() {
+  return (
+    <div className="card-clinical border border-[hsl(var(--surface-3))] p-6 text-center">
+      <p className="text-sm text-[hsl(var(--ink-2))]">Lista de compras disponível após a geração do plano estruturado.</p>
+    </div>
+  );
+}
+
 interface Props {
-  dietPlan: DietPlan;
+  dietPlan: DietPlan | null | undefined;
 }
 
 export default function GroceryChecklist({ dietPlan }: Props) {
+  if (!dietPlan || !dietPlan.meals) {
+    return <GroceryUnavailable />;
+  }
+
   const allIngredients = Object.values(dietPlan.meals)
     .flatMap((m) => m.ingredients)
     .filter((v, i, a) => a.indexOf(v) === i);

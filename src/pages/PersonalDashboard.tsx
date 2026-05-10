@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useId } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, useAnimationControls, useInView, useSpring, useTransform } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,26 +34,6 @@ interface Lead {
   full_name: string | null;
   email: string | null;
   created_at: string;
-}
-
-// ── Só exibição: % semanal e gradientes por aluno (sem query extra) ───────
-const ENERGY_AVATAR_GRADIENTS: { from: string; to: string }[] = [
-  { from: "hsl(24, 90%, 52%)", to: "hsl(16, 88%, 42%)" },
-  { from: "hsl(152, 60%, 42%)", to: "hsl(168, 65%, 32%)" },
-  { from: "hsl(210, 80%, 48%)", to: "hsl(230, 70%, 38%)" },
-];
-
-const PROGRESS_BAR_TINTS = [
-  "from-orange-500 to-amber-500",
-  "from-emerald-500 to-teal-500",
-  "from-sky-500 to-blue-600",
-];
-
-function weekProgressForLead(lead: Lead, index: number): number {
-  const raw = (lead.email ?? "") + (lead.full_name ?? "") + String(index);
-  let h = 0;
-  for (let i = 0; i < raw.length; i += 1) h = (h + raw.charCodeAt(i) * 17) % 100;
-  return Math.max(12, Math.min(100, 18 + h));
 }
 
 function leadInitials(lead: Lead, index: number) {
@@ -114,53 +94,6 @@ function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: num
   );
 }
 
-function CircularProgress({ value, size = 48 }: { value: number; size?: number }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const gradId = useId().replace(/:/g, "");
-  const isInView = useInView(svgRef, { once: true, margin: "-5%" });
-  const radius = (size - 6) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = useSpring(circumference, { stiffness: 60, damping: 20 });
-
-  useEffect(() => {
-    if (isInView) {
-      const v = Math.min(100, Math.max(0, value));
-      strokeDashoffset.set(circumference - (v / 100) * circumference);
-    }
-  }, [isInView, value, circumference, strokeDashoffset]);
-
-  return (
-    <svg ref={svgRef} width={size} height={size} className="shrink-0" aria-hidden>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="hsl(158 72% 32%)" />
-          <stop offset="100%" stopColor="hsl(158 80% 55%)" />
-        </linearGradient>
-      </defs>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="hsl(var(--surface-3))"
-        strokeWidth="3"
-      />
-      <motion.circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={`url(#${gradId})`}
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        style={{ strokeDashoffset }}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </svg>
-  );
-}
-
 // ── Componente ───────────────────────────────────────────────────────────────
 export default function PersonalDashboard() {
   const { user, profile } = useAuth();
@@ -173,6 +106,7 @@ export default function PersonalDashboard() {
   const [totalEarned,   setTotalEarned]   = useState(0);
   const [pendingAmount, setPendingAmount] = useState(0);
   const [leads,         setLeads]         = useState<Lead[]>([]);
+  const [leadDietCounts, setLeadDietCounts] = useState<Record<string, number>>({});
   const [loading,       setLoading]       = useState(true);
 
   const logoInitials = useMemo(
@@ -254,6 +188,30 @@ export default function PersonalDashboard() {
       }));
 
       setLeads(safeLeads);
+
+      const emails = safeLeads.map((l) => l.email).filter((e): e is string => Boolean(e));
+      if (emails.length > 0) {
+        const { data: profileRows } = await supabase.from("profiles").select("user_id, email").in("email", emails);
+        const uidToEmail = new Map((profileRows ?? []).map((p) => [p.user_id, p.email as string]));
+        const userIds = [...uidToEmail.keys()];
+        if (userIds.length > 0) {
+          const { data: drRows } = await supabase
+            .from("diet_requests")
+            .select("client_id")
+            .eq("status", "completed")
+            .in("client_id", userIds);
+          const counts: Record<string, number> = {};
+          (drRows ?? []).forEach((row) => {
+            const email = uidToEmail.get(row.client_id);
+            if (email) counts[email] = (counts[email] ?? 0) + 1;
+          });
+          setLeadDietCounts(counts);
+        } else {
+          setLeadDietCounts({});
+        }
+      } else {
+        setLeadDietCounts({});
+      }
     } finally {
       setLoading(false);
     }
@@ -379,7 +337,7 @@ export default function PersonalDashboard() {
             >
               Alunos
             </h2>
-            <span className="text-xs font-sans text-[hsl(var(--ink-3))]">Engajamento estimado (semana)</span>
+            <span className="text-xs font-sans text-[hsl(var(--ink-3))]">Dietas concluídas (plataforma)</span>
           </div>
           {leads.length === 0 ? (
             <div className="card-clinical border-dashed border-[hsl(var(--surface-3))] py-12 text-center text-sm text-[hsl(var(--ink-3))]">
@@ -388,10 +346,8 @@ export default function PersonalDashboard() {
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {leads.map((lead, index) => {
-                const g = ENERGY_AVATAR_GRADIENTS[index % ENERGY_AVATAR_GRADIENTS.length];
-                const barTint = PROGRESS_BAR_TINTS[index % PROGRESS_BAR_TINTS.length];
-                const pct = weekProgressForLead(lead, index);
                 const displayName = lead.full_name || lead.email?.split("@")[0] || "Aluno";
+                const completedCount = leadDietCounts[lead.email ?? ""] ?? 0;
                 return (
                   <motion.div
                     key={`${lead.email ?? lead.full_name ?? ""}-${index}`}
@@ -409,32 +365,21 @@ export default function PersonalDashboard() {
                     <div className="flex items-start gap-3">
                       <div
                         className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-md"
-                        style={{ background: `linear-gradient(135deg, ${g.from}, ${g.to})` }}
+                        style={{ background: "linear-gradient(135deg, hsl(152,60%,42%), hsl(168,65%,32%))" }}
                       >
                         {leadInitials(lead, index)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">
-                          {displayName}
-                        </p>
+                        <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">{displayName}</p>
                         <p className="mt-0.5 text-xs font-sans text-[hsl(var(--ink-3))]">
                           Indicação ativa · nutrIAprova
                         </p>
                       </div>
-                      <CircularProgress value={pct} size={48} />
-                    </div>
-                    <div className="mt-4">
-                      <div className="mb-1.5 flex items-center justify-between text-[11px] font-sans text-[hsl(var(--ink-3))]">
-                        <span>Concluído esta semana</span>
-                        <span className="font-semibold tabular-nums text-[hsl(var(--ink-1))]">
-                          <AnimatedNumber value={pct} decimals={0} />%
-                        </span>
-                      </div>
-                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-[hsl(var(--surface-2))]">
-                        <div
-                          className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-500", barTint)}
-                          style={{ width: `${pct}%` }}
-                        />
+                      <div className="text-right shrink-0">
+                        <p className="font-display text-lg font-bold text-[hsl(var(--ink-1))] tabular-nums">{completedCount}</p>
+                        <p className="text-[10px] font-sans text-[hsl(var(--ink-3))]">
+                          {completedCount === 1 ? "dieta concluída" : "dietas concluídas"}
+                        </p>
                       </div>
                     </div>
                   </motion.div>

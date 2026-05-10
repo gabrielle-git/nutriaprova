@@ -28,14 +28,14 @@ const GOAL_OPTIONS = [
 ];
 
 const ALLERGY_OPTIONS = [
-  { value: "gluten", label: "Sem Glúten", emoji: "🌾" },
-  { value: "lactose", label: "Zero Lactose", emoji: "🥛" },
-  { value: "amendoim", label: "Amendoim", emoji: "🥜" },
-  { value: "frutos_do_mar", label: "Frutos do Mar", emoji: "🦐" },
-  { value: "ovo", label: "Ovo", emoji: "🥚" },
-  { value: "soja", label: "Soja", emoji: "🫘" },
-  { value: "vegano", label: "Vegano", emoji: "🌱" },
-  { value: "vegetariano", label: "Vegetariano", emoji: "🥬" },
+  { value: "gluten", label: "Intolerância ao Glúten", emoji: "🌾" },
+  { value: "lactose", label: "Intolerância à Lactose", emoji: "🥛" },
+  { value: "amendoim", label: "Alergia a Amendoim", emoji: "🥜" },
+  { value: "frutos_do_mar", label: "Alergia a Frutos do Mar", emoji: "🦐" },
+  { value: "ovo", label: "Alergia a Ovo", emoji: "🥚" },
+  { value: "soja", label: "Alergia a Soja", emoji: "🫘" },
+  { value: "vegano", label: "Dieta Vegana", emoji: "🌱" },
+  { value: "vegetariano", label: "Dieta Vegetariana", emoji: "🥬" },
 ];
 
 const STEPS = ["Dados Básicos", "Objetivos", "Restrições", "Gerando..."];

@@ -155,3 +155,51 @@ export async function adjustDietWithAI(currentPlan: DietPlan, instruction: strin
     throw new Error(error instanceof Error ? error.message : 'Erro ao ajustar plano');
   }
 }
+
+/**
+ * Manda o Markdown bruto do plano + instrução do nutri para o webhook n8n de ajuste.
+ * O n8n deve usar a mesma instrução (ex: "tire o leite") e reescrever o Markdown,
+ * devolvendo { markdownText: string } no corpo da resposta.
+ *
+ * Contrato de resposta esperado do n8n:
+ *   { "markdownText": "# Plano Alimentar\n..." }
+ *
+ * Se o n8n ainda não tiver esse contrato implementado, retorna o markdown original
+ * com um aviso de fallback no console — sem quebrar o fluxo.
+ */
+export async function adjustMarkdownWithAI(
+  currentMarkdown: string,
+  instruction: string,
+): Promise<string> {
+  try {
+    const response = await postToN8n(N8N_ADJUST_WEBHOOK_URL, {
+      action: "adjust_markdown",
+      currentMarkdown,
+      instruction,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data = (await response.json()) as Record<string, unknown>;
+
+    if (data.error) {
+      throw new Error(String(data.error));
+    }
+
+    // Aceita tanto { markdownText: "..." } quanto { text: "..." } como fallback.
+    const result = (data.markdownText ?? data.text ?? data.markdown) as string | undefined;
+    if (typeof result !== "string" || !result.trim()) {
+      throw new Error("Resposta do n8n não continha campo markdownText válido.");
+    }
+
+    return result;
+  } catch (error) {
+    await logN8nError("adjustMarkdownWithAI", error, { instruction });
+    throw new Error(
+      error instanceof Error ? error.message : "Erro ao ajustar Markdown com IA",
+    );
+  }
+}

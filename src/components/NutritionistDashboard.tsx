@@ -2,7 +2,8 @@
 // que liste membros, mostre slots disponíveis (groupSize do TIER_CONFIG = 4),
 // e permita convite por e-mail. Aguarda decisão sobre schema (tabela clinics +
 // clinic_members) e modelo de cobrança/permissão. Ver Bug 4 do prompt original.
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useReactToPrint } from "react-to-print";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnimationControls } from "framer-motion";
 import { AnimatePresence, motion, useAnimationControls, useInView, useSpring, useTransform } from "framer-motion";
@@ -36,17 +37,28 @@ import {
   ChevronLeft,
   X,
   Loader2,
+  ClipboardCheck,
+  Plus,
+  Save,
+  Download,
+  User2,
+  Scale,
+  Target,
+  Ruler,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { activityLabel, allergyLabel } from "@/lib/labels";
 import { getTimeGreeting } from "@/lib/timeGreeting";
 import { toast } from "sonner";
-import { adjustDietWithAI, type DietPlan, type ClientData } from "@/services/n8nService";
-import { jobCoinCost, type PlanTier, canUseAI, getTierConfig } from "@/hooks/usePlanTier";
+import { adjustDietWithAI, adjustMarkdownWithAI, type DietPlan, type ClientData, type Meal } from "@/services/n8nService";
+import { jobCoinCost, type PlanTier, type TierConfig, canUseAI, getTierConfig } from "@/hooks/usePlanTier";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 
 import SignatureEditor from "./SignatureEditor";
 import DietPlanCard from "./DietPlanCard";
+import AiDraftMarkdown from "./AiDraftMarkdown";
 import PremiumDietPlanView from "./PremiumDietPlanView";
 import RetentionTab from "./RetentionTab";
 import AffiliateTab from "./AffiliateTab";
@@ -90,6 +102,39 @@ type StoredClientData = Partial<ClientData> & {
 };
 
 type DietRequest = Database["public"]["Tables"]["diet_requests"]["Row"];
+
+/** Conteúdo de `ai_draft`: JSON estruturado (legado / n8n) ou texto/markdown. */
+type ParsedAiDraft =
+  | { kind: "structured"; plan: DietPlan }
+  | { kind: "markdown"; text: string }
+  | { kind: "empty" };
+
+function parseAiDraft(raw: unknown): ParsedAiDraft {
+  if (raw == null) return { kind: "empty" };
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return { kind: "empty" };
+    if (t.startsWith("{")) {
+      try {
+        const o = JSON.parse(t) as unknown;
+        if (o && typeof o === "object" && !Array.isArray(o) && "meals" in (o as Record<string, unknown>)) {
+          return { kind: "structured", plan: o as DietPlan };
+        }
+      } catch {
+        /* texto ou JSON inválido: tratar como markdown */
+      }
+    }
+    return { kind: "markdown", text: raw };
+  }
+  if (typeof raw === "object" && !Array.isArray(raw) && raw !== null && "meals" in raw) {
+    return { kind: "structured", plan: raw as DietPlan };
+  }
+  return { kind: "empty" };
+}
+
+function hasAiDraftContent(request: DietRequest | null | undefined): boolean {
+  return parseAiDraft(request?.ai_draft).kind !== "empty";
+}
 
 function asStoredClientData(raw: Json | null | undefined): StoredClientData | null {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -247,6 +292,72 @@ const itemVariants = {
   },
 };
 
+interface AiUsageStatusBarProps {
+  tier: PlanTier;
+  usedToday: number;
+  tierConfig: TierConfig;
+  unlimitedOverride?: boolean;
+}
+
+function AiUsageStatusBar({ tier, usedToday, tierConfig, unlimitedOverride = false }: AiUsageStatusBarProps) {
+  const navigate = useNavigate();
+  const isUnlimited = unlimitedOverride || tierConfig.aiCorrectionsPerDay === "unlimited";
+  const limit = tierConfig.aiCorrectionsPerDay;
+  const atLimit =
+    !isUnlimited &&
+    (limit === 0 || (typeof limit === "number" && !canUseAI(tier, usedToday)));
+
+  if (isUnlimited) {
+    return (
+      <motion.div
+        variants={itemVariants}
+        className="mb-6 flex flex-wrap items-center gap-2.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-3 py-2 shadow-sm"
+      >
+        <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+        <span className="text-sm font-medium text-[hsl(var(--ink-1))]">
+          {tierConfig.aiCorrectionsPerDay === "unlimited"
+            ? "Ajustes IA: ilimitados (Clínica)"
+            : "Ajustes IA: ilimitados."}
+        </span>
+        <Badge variant="outline" className="border-[hsl(var(--surface-3))] text-[10px] text-[hsl(var(--ink-2))]">
+          IA
+        </Badge>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div variants={itemVariants} className="mb-6 space-y-2">
+      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-3 py-2 shadow-sm">
+        <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+        <span className="text-sm font-medium text-[hsl(var(--ink-1))]">
+          Ajustes IA hoje: {usedToday} / {limit}
+        </span>
+        <Badge variant="outline" className="border-[hsl(var(--surface-3))] text-[10px] text-[hsl(var(--ink-2))]">
+          {tierConfig.label}
+        </Badge>
+      </div>
+      {atLimit ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+          <p className="min-w-0 flex-1 text-xs text-[hsl(var(--ink-2))]">
+            Limite diário de ajustes com IA atingido ou indisponível no seu plano. Faça upgrade para continuar.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-amber-600/40 text-amber-900 hover:bg-amber-500/15 dark:text-amber-100"
+            onClick={() => navigate("/planos")}
+          >
+            Ver planos
+          </Button>
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
 function AnimatedNumber({ value, decimals = 0 }: { value: number; decimals?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
   const isInView = useInView(ref, { once: true });
@@ -313,14 +424,15 @@ type RequestPanelCommon = {
   profile: { credits?: number; full_name?: string } | null;
   onOpenReview: (r: DietRequest) => void;
   onOpenPdf: (r: DietRequest) => void;
+  onClaimAndReview: (r: DietRequest) => Promise<void>;
   onAccept: (r: DietRequest) => Promise<void>;
   onGoRetention: () => void;
-  draft: DietPlan | null;
   clientData: StoredClientData | null;
   onBack?: () => void;
   epicRumbleControls?: AnimationControls;
   /** Quando coincide com `request.id`, aceite da solicitação em andamento (sem chamada n8n). */
   acceptingRequestId: string | null;
+  claimingRequestId: string | null;
 };
 
 function PatientDetailPanel({
@@ -330,26 +442,23 @@ function PatientDetailPanel({
   onBack,
   onOpenReview,
   onOpenPdf,
+  onClaimAndReview,
   onAccept,
   onGoRetention,
-  draft,
   clientData: cd,
   epicRumbleControls,
   acceptingRequestId,
+  claimingRequestId,
 }: RequestPanelCommon) {
   const st = STATUS_CONFIG[(request.status as keyof typeof STATUS_CONFIG) ?? "pending"] ?? STATUS_CONFIG.pending;
   const StatusIcon = st.icon;
   const adherence = adherenceFromStoredClient(cd);
-  const meals = draft?.meals;
+  const parsed = parseAiDraft(request.ai_draft);
+  const meals = parsed.kind === "structured" ? parsed.plan.meals : undefined;
   const displayName = patientLabel(cd, request.id);
   const isAcceptingJob = acceptingRequestId === request.id;
-  const hasAiDraft =
-    !!draft &&
-    typeof draft === "object" &&
-    !Array.isArray(draft) &&
-    "meals" in draft &&
-    (draft as DietPlan).meals &&
-    typeof (draft as DietPlan).meals === "object";
+  const isClaiming = claimingRequestId === request.id;
+  const hasAiDraft = parsed.kind !== "empty";
   return (
     <div className="space-y-8">
       {onBack && (
@@ -444,6 +553,10 @@ function PatientDetailPanel({
               );
             })}
           </ul>
+        ) : parsed.kind === "markdown" ? (
+          <p className="text-sm text-[hsl(var(--ink-3))] font-sans">
+            Rascunho em texto (Markdown). Use <strong className="text-[hsl(var(--ink-2))]">Visualizar</strong> para ler o plano completo.
+          </p>
         ) : (
           <p className="text-sm text-[hsl(var(--ink-3))] font-sans">Plano ainda não disponível para esta solicitação.</p>
         )}
@@ -486,8 +599,10 @@ function PatientDetailPanel({
             </Button>
           )
         )}
-        {request.status === "in_review" && request.nutritionist_id === userId && (
-          hasAiDraft ? (
+        {request.status === "in_review" &&
+          hasAiDraft &&
+          (request.nutritionist_id == null || request.nutritionist_id === userId) && (
+          <>
             <motion.button
               type="button"
               animate={epicRumbleControls}
@@ -508,12 +623,32 @@ function PatientDetailPanel({
               </motion.span>
               Visualizar Rascunho da IA
             </motion.button>
-          ) : (
-            <div className="flex h-11 items-center gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-4 text-sm text-[hsl(var(--ink-2))]">
-              <Clock className="h-4 w-4 shrink-0 text-primary" />
-              <span>Aguardando IA — o rascunho será preenchido pelo fluxo do cliente (n8n).</span>
-            </div>
-          )
+            {request.nutritionist_id == null && (
+              <Button
+                type="button"
+                className="h-11 gap-2 border border-[hsl(var(--primary))] bg-[hsl(var(--surface-0))] font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/10"
+                disabled={isClaiming}
+                onClick={() => {
+                  void onClaimAndReview(request);
+                }}
+              >
+                {isClaiming ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" strokeWidth={2} />
+                ) : (
+                  <ClipboardCheck className="h-4 w-4 shrink-0" />
+                )}
+                {isClaiming ? "Assumindo..." : "Validar"}
+              </Button>
+            )}
+          </>
+        )}
+        {request.status === "in_review" &&
+          !hasAiDraft &&
+          (request.nutritionist_id == null || request.nutritionist_id === userId) && (
+          <div className="flex h-11 items-center gap-2 rounded-lg border border-dashed border-primary/30 bg-primary/5 px-4 text-sm text-[hsl(var(--ink-2))]">
+            <Clock className="h-4 w-4 shrink-0 text-primary" />
+            <span>Aguardando IA — o rascunho será preenchido pelo fluxo do cliente (n8n).</span>
+          </div>
         )}
         <Button
           type="button"
@@ -538,6 +673,98 @@ function PatientDetailPanel({
   );
 }
 
+interface InlineEditableMealProps {
+  mealKey: string;
+  meal: Meal;
+  onChange: (mealKey: string, updated: Partial<Meal>) => void;
+}
+
+const MEAL_LABELS_INLINE: Record<string, { label: string; emoji: string }> = {
+  cafeDaManha: { label: "Café da Manhã", emoji: "☀️" },
+  lancheDaManha: { label: "Lanche da Manhã", emoji: "🍎" },
+  almoco: { label: "Almoço", emoji: "🍛" },
+  lancheDaTarde: { label: "Lanche da Tarde", emoji: "🥤" },
+  jantar: { label: "Jantar", emoji: "🌙" },
+};
+
+function InlineEditableMeal({ mealKey, meal, onChange }: InlineEditableMealProps) {
+  const meta = MEAL_LABELS_INLINE[mealKey] ?? { label: mealKey, emoji: "🍽️" };
+  return (
+    <div className="rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3 bg-[hsl(var(--surface-1))] border-b border-[hsl(var(--surface-3))]">
+        <span className="text-xl">{meta.emoji}</span>
+        <input
+          className="flex-1 font-display font-bold text-sm bg-transparent border-0 border-b border-dashed border-[hsl(var(--surface-3))] focus:outline-none focus:border-[hsl(var(--primary))] text-[hsl(var(--ink-1))] pb-0.5"
+          value={meal.name}
+          onChange={(e) => onChange(mealKey, { name: e.target.value })}
+          placeholder="Nome da refeição"
+        />
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="grid grid-cols-4 gap-2">
+          {(
+            [
+              { key: "calories", label: "Kcal", color: "text-destructive" },
+              { key: "protein", label: "Prot (g)", color: "text-blue-600 dark:text-blue-400" },
+              { key: "carbs", label: "Carbs (g)", color: "text-amber-600 dark:text-amber-400" },
+              { key: "fat", label: "Gord (g)", color: "text-rose-600 dark:text-rose-400" },
+            ] as const
+          ).map(({ key, label, color }) => (
+            <div key={key} className="flex flex-col gap-1">
+              <label className={`text-[10px] font-semibold uppercase tracking-wider ${color}`}>{label}</label>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-2 py-1.5 text-sm font-display font-bold text-[hsl(var(--ink-1))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/30 focus:border-[hsl(var(--primary))] tabular-nums"
+                value={meal[key]}
+                onChange={(e) => onChange(mealKey, { [key]: Number(e.target.value) })}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--ink-3))] mb-1.5">Ingredientes</p>
+          <div className="space-y-1.5">
+            {meal.ingredients.map((ing, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--primary))] shrink-0" />
+                <input
+                  className="flex-1 text-sm text-[hsl(var(--ink-1))] bg-transparent border-0 border-b border-dashed border-[hsl(var(--surface-3))] focus:outline-none focus:border-[hsl(var(--primary))] pb-0.5"
+                  value={ing}
+                  onChange={(e) => {
+                    const newIngredients = [...meal.ingredients];
+                    newIngredients[i] = e.target.value;
+                    onChange(mealKey, { ingredients: newIngredients });
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newIngredients = meal.ingredients.filter((_, idx) => idx !== i);
+                    onChange(mealKey, { ingredients: newIngredients });
+                  }}
+                  className="text-[hsl(var(--ink-3))] hover:text-destructive transition-colors p-1"
+                  aria-label="Remover ingrediente"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => onChange(mealKey, { ingredients: [...meal.ingredients, ""] })}
+              className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-1 mt-1"
+            >
+              <Plus className="h-3 w-3" /> Adicionar ingrediente
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function NutritionistDashboard() {
   const navigate = useNavigate();
   const { user, profile, refreshProfile } = useAuth();
@@ -552,14 +779,33 @@ export default function NutritionistDashboard() {
   const [aiCorrectionsToday, setAiCorrectionsToday] = useState(0);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"feed" | "pdf">("feed");
+  const printPlanRef = useRef<HTMLDivElement>(null);
+  const [printPlanAfterPdfOpen, setPrintPlanAfterPdfOpen] = useState(false);
   const [mainTab, setMainTab] = useState("jobs");
   const [clinicTab, setClinicTab] = useState<"list" | "detail">("list");
   const [welcomeBannerDismissed, setWelcomeBannerDismissed] = useState(false);
   const [acceptingJobRequestId, setAcceptingJobRequestId] = useState<string | null>(null);
+  const handlePrintPlan = useReactToPrint({
+    contentRef: printPlanRef,
+    documentTitle: () =>
+      selectedRequest
+        ? `Plano-alimentar-nutrIAprova-${selectedRequest.id.slice(0, 8)}`
+        : "Plano-alimentar-nutrIAprova",
+    pageStyle: "@page { size: auto; margin: 12mm; }",
+  });
   const planTier = normalizePlanTier(profile?.plan_tier);
   const hasAffiliateAccess = planTier === "premium" || planTier === "clinic";
   const hasRetentionAccess = planTier === "premium" || planTier === "clinic";
   const hasExclusiveLeadsAccess = planTier === "premium" || planTier === "clinic";
+
+  useEffect(() => {
+    if (!printPlanAfterPdfOpen || viewMode !== "pdf" || !sheetOpen) return undefined;
+    const t = window.setTimeout(() => {
+      handlePrintPlan();
+      setPrintPlanAfterPdfOpen(false);
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [printPlanAfterPdfOpen, viewMode, sheetOpen, handlePrintPlan]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -599,7 +845,7 @@ export default function NutritionistDashboard() {
       setSelectedRequest((prev) => {
         if (!prev) return prev;
         const fresh = sorted.find((r) => r.id === prev.id);
-        return fresh ? (fresh as DietRequest) : prev;
+        return (fresh ?? null) as DietRequest | null;
       });
     }
     setLoading(false);
@@ -659,14 +905,95 @@ export default function NutritionistDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- evita re-subscribe em todo render
   }, [profile?.id, user?.id]);
 
-  const hasValidDraft = (request: DietRequest | null | undefined) => {
-    const maybeDraft = request?.ai_draft as unknown;
-    return !!(
-      maybeDraft &&
-      typeof maybeDraft === "object" &&
-      !Array.isArray(maybeDraft) &&
-      "meals" in (maybeDraft as Record<string, unknown>)
+  const [reviewSheetMode, setReviewSheetMode] = useState<"preview" | "edit">("preview");
+  const [inlineEditMode, setInlineEditMode] = useState(false);
+  const [editableDraft, setEditableDraft] = useState<DietPlan | null>(null);
+  // Estados para edição manual de Markdown
+  const [markdownEditMode, setMarkdownEditMode] = useState(false);
+  const [editableMarkdown, setEditableMarkdown] = useState("");
+  const [claimingRequestId, setClaimingRequestId] = useState<string | null>(null);
+
+  const removeRequestFromUi = useCallback((id: string) => {
+    setRequests((prev) => prev.filter((r) => r.id !== id));
+    setSelectedRequest((prev) => (prev?.id === id ? null : prev));
+    setSheetOpen(false);
+  }, []);
+
+  const visibleRequests = useMemo(() => {
+    if (!user?.id) return requests;
+    return requests.filter(
+      (r) =>
+        !(
+          r.status === "in_review" &&
+          r.nutritionist_id != null &&
+          r.nutritionist_id !== user.id
+        ),
     );
+  }, [requests, user?.id]);
+
+  const tryClaimPoolRequest = useCallback(
+    async (requestId: string): Promise<"ok" | "taken" | "error"> => {
+      if (!user?.id) return "error";
+      const { data: snap, error: snapErr } = await supabase
+        .from("diet_requests")
+        .select("nutritionist_id")
+        .eq("id", requestId)
+        .maybeSingle();
+      if (snapErr || !snap) return "error";
+      if (snap.nutritionist_id === user.id) return "ok";
+      if (snap.nutritionist_id != null) return "taken";
+      const { data: upd, error } = await supabase
+        .from("diet_requests")
+        .update({ nutritionist_id: user.id })
+        .eq("id", requestId)
+        .is("nutritionist_id", null)
+        .select()
+        .maybeSingle();
+      if (error) return "error";
+      if (upd) return "ok";
+      const { data: snap2 } = await supabase
+        .from("diet_requests")
+        .select("nutritionist_id")
+        .eq("id", requestId)
+        .maybeSingle();
+      if (snap2?.nutritionist_id === user.id) return "ok";
+      return "taken";
+    },
+    [user?.id],
+  );
+
+  const handleClaimAndOpen = async (request: DietRequest) => {
+    if (!user?.id) {
+      toast.error("Sessão inválida. Recarregue a página.");
+      return;
+    }
+    setClaimingRequestId(request.id);
+    try {
+      const result = await tryClaimPoolRequest(request.id);
+      if (result === "taken") {
+        toast.error("Este cardápio já foi assumido por outro nutricionista.");
+        removeRequestFromUi(request.id);
+        await fetchRequests();
+        return;
+      }
+      if (result === "error") {
+        toast.error("Não foi possível assumir o cardápio.");
+        return;
+      }
+      await fetchRequests();
+      const { data: fresh } = await supabase.from("diet_requests").select("*").eq("id", request.id).maybeSingle();
+      if (fresh) {
+        const row = fresh as DietRequest;
+        setSelectedRequest(row);
+        setExpertComment("");
+        setViewMode("feed");
+        setReviewSheetMode("edit");
+        setSheetOpen(true);
+        toast.success("Cardápio atribuído a você. Revise e valide quando estiver pronto.");
+      }
+    } finally {
+      setClaimingRequestId(null);
+    }
   };
 
   const handleAcceptJob = async (request: DietRequest) => {
@@ -744,7 +1071,8 @@ export default function NutritionistDashboard() {
       setSelectedRequest(row);
       setViewMode("feed");
 
-      if (hasValidDraft(row)) {
+      if (hasAiDraftContent(row)) {
+        setReviewSheetMode("edit");
         setSheetOpen(true);
       } else {
         setSheetOpen(false);
@@ -757,17 +1085,103 @@ export default function NutritionistDashboard() {
     }
   };
 
+  const handleInlineChange = useCallback((mealKey: string, updated: Partial<Meal>) => {
+    setEditableDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        meals: {
+          ...prev.meals,
+          [mealKey]: { ...prev.meals[mealKey as keyof typeof prev.meals], ...updated },
+        },
+      };
+    });
+  }, []);
+
+  const handleSaveInlineEdit = useCallback(async () => {
+    if (!selectedRequest || !editableDraft) return;
+
+    const newTotalCalories = Object.values(editableDraft.meals).reduce((sum, m) => sum + (m?.calories ?? 0), 0);
+    const updatedDraft: DietPlan = { ...editableDraft, totalCalories: newTotalCalories };
+
+    try {
+      const { error } = await supabase
+        .from("diet_requests")
+        .update({ ai_draft: updatedDraft as unknown as Json })
+        .eq("id", selectedRequest.id);
+
+      if (error) throw error;
+
+      setSelectedRequest({ ...selectedRequest, ai_draft: updatedDraft as unknown as Json });
+      setInlineEditMode(false);
+      toast.success("Rascunho atualizado com sucesso.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao salvar";
+      toast.error(msg);
+    }
+  }, [selectedRequest, editableDraft]);
+
+  const handleSaveMarkdownEdit = async () => {
+    if (!selectedRequest || !editableMarkdown.trim()) return;
+    try {
+      const { error } = await supabase
+        .from("diet_requests")
+        .update({ ai_draft: editableMarkdown } as any)
+        .eq("id", selectedRequest.id);
+      if (error) throw error;
+      setSelectedRequest({ ...selectedRequest, ai_draft: editableMarkdown as any });
+      setMarkdownEditMode(false);
+      toast.success("Rascunho em texto salvo com sucesso.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
+    }
+  };
+
   const handleApprove = async () => {
-    if (!selectedRequest) return;
-    const brandedClientData = enrichClientDataWithBranding(selectedRequest.client_data, {
+    if (!selectedRequest || !user?.id) return;
+    let row = selectedRequest;
+
+    if (row.nutritionist_id !== user.id) {
+      if (row.nutritionist_id != null) {
+        toast.error("Este cardápio já foi assumido por outro nutricionista.");
+        removeRequestFromUi(row.id);
+        await fetchRequests();
+        return;
+      }
+      const claim = await tryClaimPoolRequest(row.id);
+      if (claim === "taken") {
+        toast.error("Este cardápio já foi assumido por outro nutricionista.");
+        removeRequestFromUi(row.id);
+        await fetchRequests();
+        return;
+      }
+      if (claim === "error") {
+        toast.error("Não foi possível validar. Tente novamente.");
+        return;
+      }
+      const { data: fresh } = await supabase.from("diet_requests").select("*").eq("id", row.id).maybeSingle();
+      if (fresh) row = fresh as DietRequest;
+      setSelectedRequest(row);
+    }
+
+    const brandedClientData = enrichClientDataWithBranding(row.client_data, {
       clinicLogoUrl: profile?.clinic_logo_url ?? null,
       professionalTier: profile?.plan_tier ?? null,
     });
-    await supabase.from("diet_requests").update({
-      status: "completed",
-      notes: expertComment || null,
-      client_data: brandedClientData,
-    }).eq("id", selectedRequest.id);
+    const { error: upErr } = await supabase
+      .from("diet_requests")
+      .update({
+        status: "completed",
+        notes: expertComment || null,
+        client_data: brandedClientData,
+      })
+      .eq("id", row.id)
+      .eq("nutritionist_id", user.id);
+    if (upErr) {
+      console.warn("[NutritionistDashboard] approve:", upErr.message);
+      toast.error("Não foi possível concluir a validação.");
+      return;
+    }
     void epicRumble.start({
       x: [0, -3, 3, -2, 2, 0],
       transition: { duration: 0.4 },
@@ -775,13 +1189,14 @@ export default function NutritionistDashboard() {
     toast.success("Plano aprovado e enviado ao cliente!");
     setExpertComment("");
     setSheetOpen(false);
-    fetchRequests();
+    await fetchRequests();
   };
 
   const handleAIAdjust = async () => {
     if (!selectedRequest || !aiInstruction.trim() || !user) return;
-    if (!hasValidDraft(selectedRequest)) {
-      toast.error("Não há rascunho válido para ajustar.");
+    const parsedSel = parseAiDraft(selectedRequest.ai_draft);
+    if (parsedSel.kind !== "structured") {
+      toast.error("Ajuste por IA só está disponível para rascunhos no formato estruturado (JSON).");
       return;
     }
 
@@ -805,8 +1220,7 @@ export default function NutritionistDashboard() {
 
     setAdjusting(true);
     try {
-      const currentDraft = selectedRequest.ai_draft as unknown as DietPlan;
-      const newDraft = await adjustDietWithAI(currentDraft, aiInstruction.trim());
+      const newDraft = await adjustDietWithAI(parsedSel.plan, aiInstruction.trim());
       const { error: upErr } = await supabase
         .from("diet_requests")
         .update({ ai_draft: newDraft as unknown as Json })
@@ -841,32 +1255,112 @@ export default function NutritionistDashboard() {
     }
   };
 
+  const handleAIAdjustMarkdown = async () => {
+    if (!selectedRequest || !aiInstruction.trim() || !user) return;
+
+    const isSupreme = user.email?.toLowerCase() === SUPREME_EMAIL.toLowerCase();
+    const tier = normalizePlanTier(profile?.plan_tier);
+    const cfg = getTierConfig(tier);
+
+    if (!isSupreme) {
+      if (cfg.aiCorrectionsPerDay === 0) {
+        toast.error("Correções de IA não estão incluídas no seu plano. Faça upgrade para Basic ou superior.");
+        return;
+      }
+      const used = await fetchAiCorrectionsTodayCount(user.id);
+      if (!canUseAI(tier, used)) {
+        toast.error(
+          `Limite diário de correções IA atingido (${String(cfg.aiCorrectionsPerDay)}/dia). Volte amanhã ou faça upgrade.`,
+        );
+        return;
+      }
+    }
+
+    // Pega o texto atual: usa o textarea se estiver em modo de edição, caso contrário usa o draft salvo.
+    const parsedSel = parseAiDraft(selectedRequest.ai_draft);
+    const currentText =
+      markdownEditMode && editableMarkdown.trim()
+        ? editableMarkdown
+        : parsedSel.kind === "markdown"
+          ? parsedSel.text
+          : null;
+
+    if (!currentText) {
+      toast.error("Nenhum texto de plano disponível para ajuste.");
+      return;
+    }
+
+    setAdjusting(true);
+    try {
+      const newMarkdown = await adjustMarkdownWithAI(currentText, aiInstruction.trim());
+
+      const { error: upErr } = await supabase
+        .from("diet_requests")
+        .update({ ai_draft: newMarkdown } as any)
+        .eq("id", selectedRequest.id);
+      if (upErr) throw upErr;
+
+      // Registra uso no histórico de transações (respeita limite do tier)
+      if (!isSupreme && cfg.aiCorrectionsPerDay !== "unlimited") {
+        const { error: txErr } = await supabase.from("transactions").insert({
+          user_id: user.id,
+          amount: 0,
+          type: AI_CORRECTION_TX_TYPE,
+          description: `Correção IA (markdown) — pedido ${selectedRequest.id.slice(0, 8)}`,
+        });
+        if (txErr) console.warn("[handleAIAdjustMarkdown] tx:", txErr.message);
+        setAiCorrectionsToday((n) => n + 1);
+      }
+
+      setSelectedRequest({ ...selectedRequest, ai_draft: newMarkdown as any });
+      // Se estava editando no textarea, atualiza o textarea também
+      if (markdownEditMode) setEditableMarkdown(newMarkdown);
+      setAiInstruction("");
+      toast.success("Plano atualizado com o ajuste da IA.");
+    } catch (e) {
+      toast.error("Erro ao solicitar ajuste à IA. Tente novamente.");
+      console.error("[handleAIAdjustMarkdown]", e);
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
   const openReview = (request: DietRequest) => {
-    if (!hasValidDraft(request)) {
+    if (!hasAiDraftContent(request)) {
       toast.error("Plano ainda indisponível. Aguarde a geração da IA.");
       return;
     }
     setSelectedRequest(request);
     setExpertComment("");
     setViewMode("feed");
+    setReviewSheetMode("edit");
     setSheetOpen(true);
   };
 
   const openPdfView = (request: DietRequest) => {
-    if (!hasValidDraft(request)) {
+    if (!hasAiDraftContent(request)) {
       toast.error("Sem plano disponível para visualização em PDF.");
       return;
     }
     setSelectedRequest(request);
+    setReviewSheetMode(request.nutritionist_id === user?.id ? "edit" : "preview");
     setViewMode("pdf");
     setSheetOpen(true);
   };
 
-  const draft = selectedRequest?.ai_draft as unknown as DietPlan | null;
+  const selectedParsed = useMemo(() => parseAiDraft(selectedRequest?.ai_draft), [selectedRequest?.ai_draft]);
   const clientData = asStoredClientData(selectedRequest?.client_data);
   const completedCount = completedRequests.length;
   const withdrawalBalance = completedCount * 15;
   const isSelectedCompleted = selectedRequest?.status === "completed";
+
+  useEffect(() => {
+    setInlineEditMode(false);
+    setEditableDraft(null);
+    setMarkdownEditMode(false);
+    setEditableMarkdown("");
+  }, [selectedRequest?.id]);
+
   const activePatientsCount = requests.filter(
     (r) => r.nutritionist_id === user?.id && (r.status === "in_review" || r.status === "completed"),
   ).length;
@@ -1028,6 +1522,15 @@ export default function NutritionistDashboard() {
           </Button>
         </div>
       </motion.div>
+
+      {planTier !== "clinic" && (
+        <AiUsageStatusBar
+          tier={planTier}
+          usedToday={aiCorrectionsToday}
+          tierConfig={tierCfgForAi}
+          unlimitedOverride={isSupremeUser}
+        />
+      )}
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="space-y-6">
         <motion.div variants={itemVariants} className="w-full">
@@ -1225,7 +1728,7 @@ export default function NutritionistDashboard() {
 
           {loading ? (
             <div className="py-16 text-center text-[hsl(var(--ink-3))]">Carregando...</div>
-          ) : requests.length === 0 ? (
+          ) : visibleRequests.length === 0 ? (
             <div className="rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] py-12 text-center">
               <AlertCircle className="mx-auto mb-3 h-10 w-10 text-[hsl(var(--ink-3))]" />
               <p className="font-display font-medium text-[hsl(var(--ink-1))]">Nenhuma solicitação no momento</p>
@@ -1280,7 +1783,7 @@ export default function NutritionistDashboard() {
                     </button>
                   </div>
                   <TabsContent value="list" className="mt-0 max-h-[min(70vh,520px)] space-y-2.5 overflow-y-auto pr-0.5">
-                    {requests.map((req, index) => {
+                    {visibleRequests.map((req, index) => {
                       const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
                       const vis = listStatusVisual(String(req.status));
@@ -1349,15 +1852,16 @@ export default function NutritionistDashboard() {
                             onBack={() => setClinicTab("list")}
                             onOpenReview={openReview}
                             onOpenPdf={openPdfView}
+                            onClaimAndReview={handleClaimAndOpen}
                             onAccept={handleAcceptJob}
                             onGoRetention={() => {
                               setMainTab("retention");
                               setClinicTab("list");
                             }}
-                            draft={selectedRequest.ai_draft as unknown as DietPlan | null}
                             clientData={asStoredClientData(selectedRequest.client_data)}
                             epicRumbleControls={epicRumble}
                             acceptingRequestId={acceptingJobRequestId}
+                            claimingRequestId={claimingRequestId}
                           />
                         </motion.div>
                       ) : null}
@@ -1372,7 +1876,7 @@ export default function NutritionistDashboard() {
                     <p className="font-display text-xs font-semibold tracking-wide text-[hsl(var(--ink-2))]">Pacientes</p>
                   </div>
                   <div className="flex-1 space-y-2 overflow-y-auto px-1.5 py-1">
-                    {requests.map((req, index) => {
+                    {visibleRequests.map((req, index) => {
                       const d = asStoredClientData(req.client_data);
                       const g = avatarGradientHsl((d?.goal || req.id) as string);
                       const vis = listStatusVisual(String(req.status));
@@ -1438,12 +1942,13 @@ export default function NutritionistDashboard() {
                           profile={profile}
                           onOpenReview={openReview}
                           onOpenPdf={openPdfView}
+                          onClaimAndReview={handleClaimAndOpen}
                           onAccept={handleAcceptJob}
                           onGoRetention={() => setMainTab("retention")}
-                          draft={selectedRequest.ai_draft as unknown as DietPlan | null}
                           clientData={asStoredClientData(selectedRequest.client_data)}
                           epicRumbleControls={epicRumble}
                           acceptingRequestId={acceptingJobRequestId}
+                          claimingRequestId={claimingRequestId}
                         />
                       </motion.div>
                     ) : (
@@ -1547,7 +2052,7 @@ export default function NutritionistDashboard() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
               {[
                 { label: "Validadas", value: completedCount, em: "text-primary", money: false },
-                { label: "Pendentes", value: requests.filter((r) => r.status === "pending").length, em: "text-[hsl(var(--ink-1))]", money: false },
+                { label: "Pendentes", value: visibleRequests.filter((r) => r.status === "pending").length, em: "text-[hsl(var(--ink-1))]", money: false },
                 { label: "Em revisão", value: requests.filter((r) => r.status === "in_review" && r.nutritionist_id === user?.id).length, em: "text-[hsl(var(--ink-1))]", money: false },
                 { label: "Saldo", value: withdrawalBalance, em: "text-primary", money: true },
               ].map((s) => (
@@ -1624,45 +2129,281 @@ export default function NutritionistDashboard() {
       </Tabs>
 
       {/* Review / PDF Side Panel */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet
+        open={sheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          if (!open) {
+            setReviewSheetMode("preview");
+            setPrintPlanAfterPdfOpen(false);
+          }
+        }}
+      >
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-          <SheetHeader>
+          <SheetHeader className="print:hidden">
             <SheetTitle className="font-display">
               {viewMode === "pdf" ? "Visualização do Plano Final" : "Revisão do Plano Alimentar"}
             </SheetTitle>
           </SheetHeader>
 
-          {viewMode === "pdf" && draft ? (
-            <div className="mt-6 space-y-6">
-              <PremiumDietPlanView
-                plan={draft}
-                nutritionistName={profile?.full_name}
-                crnNumber={profile?.crn_number || undefined}
-                isCompleted={isSelectedCompleted}
-                clinicLogoUrl={clientData?.clinic_logo_url ?? clientData?.logo_url ?? (profile as { clinic_logo_url?: string | null })?.clinic_logo_url ?? null}
-                professionalTier={clientData?.nutritionist_plan_tier ?? profile?.plan_tier ?? null}
-              />
-            </div>
-          ) : draft ? (
+          {viewMode === "pdf" && selectedParsed.kind !== "empty" ? (
+            <>
+              <div className="print:hidden mt-6 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setViewMode("feed");
+                    setPrintPlanAfterPdfOpen(false);
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Voltar à revisão
+                </Button>
+                <Button
+                  type="button"
+                  className="emerald-gradient text-primary-foreground"
+                  onClick={() => void handlePrintPlan()}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Imprimir ou salvar como PDF
+                </Button>
+              </div>
+              <div ref={printPlanRef} className="mt-6 space-y-6 print:mt-0 text-foreground">
+                {selectedParsed.kind === "structured" ? (
+                  <PremiumDietPlanView
+                    plan={selectedParsed.plan}
+                    nutritionistName={profile?.full_name}
+                    crnNumber={profile?.crn_number || undefined}
+                    isCompleted={isSelectedCompleted}
+                    clinicLogoUrl={clientData?.clinic_logo_url ?? clientData?.logo_url ?? (profile as { clinic_logo_url?: string | null })?.clinic_logo_url ?? null}
+                    professionalTier={clientData?.nutritionist_plan_tier ?? profile?.plan_tier ?? null}
+                  />
+                ) : (
+                  <AiDraftMarkdown text={selectedParsed.text} />
+                )}
+              </div>
+            </>
+          ) : selectedParsed.kind !== "empty" ? (
             <div className="mt-6 space-y-6">
               {clientData && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Dados do Cliente (anonimizados)</CardTitle>
+                <Card className="card-clinical border-[hsl(var(--surface-3))] shadow-sm">
+                  <CardHeader className="border-b border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] pb-3">
+                    <CardTitle className="flex items-center gap-2 font-display text-sm font-semibold text-[hsl(var(--ink-1))]">
+                      <User2 className="h-4 w-4 text-primary shrink-0" />
+                      Dados do Cliente (anonimizados)
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-1">
-                    <p>{clientData.birthDate ? `Nasc: ${new Date(clientData.birthDate).toLocaleDateString("pt-BR")} (${clientData.age} anos)` : `Idade: ${clientData.age} anos`} • Peso: {clientData.weight}kg • Altura: {clientData.height}cm</p>
-                    <p>Objetivo: {clientData.goal} • Atividade: {clientData.activityLevel}</p>
-                    {clientData.allergies?.length > 0 && <p>Alergias: {clientData.allergies.join(", ")}</p>}
+                  <CardContent className="space-y-4 pt-4 text-sm">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="flex gap-3 rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary)/0.12)]">
+                          <Scale className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--ink-3))]">
+                            Idade / Peso
+                          </p>
+                          <p className="font-medium text-[hsl(var(--ink-1))]">
+                            {clientData.birthDate
+                              ? `${new Date(clientData.birthDate).toLocaleDateString("pt-BR")} (${clientData.age} anos)`
+                              : `${clientData.age} anos`}
+                          </p>
+                          <p className="mt-0.5 text-sm text-[hsl(var(--ink-2))]">{clientData.weight} kg</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3">
+                        <div className="flex min-w-0 flex-1 flex-col gap-2">
+                          <div className="flex items-start gap-2">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary)/0.12)]">
+                              <Ruler className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--ink-3))]">Altura</p>
+                              <p className="font-medium text-[hsl(var(--ink-1))]">{clientData.height} cm</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-2 border-t border-[hsl(var(--surface-3))] pt-2">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary)/0.12)]">
+                              <Activity className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--ink-3))]">
+                                Atividade
+                              </p>
+                              <p className="font-medium text-[hsl(var(--ink-1))]">
+                                {activityLabel(clientData.activityLevel)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3">
+                      <div className="flex flex-wrap items-start gap-2 sm:items-center">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary)/0.12)]">
+                          <Target className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--ink-3))]">Objetivo</p>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            <Badge
+                              className={cn(
+                                "border-primary/35 bg-primary/12 font-sans text-xs font-medium text-[hsl(var(--ink-1))]",
+                              )}
+                            >
+                              {clientData.goal}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {clientData.allergies && clientData.allergies.length > 0 && (
+                      <div className="rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--ink-3))]">
+                          Restrições e preferências
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {clientData.allergies.map((raw, idx) => {
+                            const tone = [
+                              "border-rose-500/35 bg-rose-500/10 text-rose-900 dark:text-rose-100",
+                              "border-amber-500/35 bg-amber-500/10 text-amber-950 dark:text-amber-100",
+                              "border-sky-500/35 bg-sky-500/10 text-sky-900 dark:text-sky-100",
+                              "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100",
+                            ][idx % 4];
+                            return (
+                              <Badge
+                                key={`${raw}-${idx}`}
+                                variant="outline"
+                                className={cn("font-sans text-xs font-normal", tone)}
+                              >
+                                {allergyLabel(raw)}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {clientData.additionalNotes && (
-                      <p className="mt-2 p-2 bg-accent/50 rounded text-xs italic">📝 {clientData.additionalNotes}</p>
+                      <p className="rounded-lg border border-primary/20 bg-accent/40 p-3 text-xs italic text-[hsl(var(--ink-2))]">
+                        📝 {clientData.additionalNotes}
+                      </p>
                     )}
                   </CardContent>
                 </Card>
               )}
 
+              {selectedParsed.kind === "structured" ? (
+                <>
+                  {!isSelectedCompleted && reviewSheetMode === "edit" && (
+                    <div className="flex items-center justify-between">
+                      <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Rascunho da IA</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!inlineEditMode) {
+                            setEditableDraft(
+                              selectedParsed.kind === "structured" ? structuredClone(selectedParsed.plan) : null,
+                            );
+                          }
+                          setInlineEditMode((v) => !v);
+                        }}
+                        className={cn(
+                          "text-xs font-medium px-3 py-1.5 rounded-full border transition-colors",
+                          inlineEditMode
+                            ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                            : "border-[hsl(var(--surface-3))] text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+                        )}
+                      >
+                        {inlineEditMode ? "✕ Cancelar edição" : "✏️ Editar manualmente"}
+                      </button>
+                    </div>
+                  )}
 
-              <DietPlanCard plan={draft} showNotes={false} />
+                  {!isSelectedCompleted && inlineEditMode && editableDraft ? (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-primary/20 bg-accent/30 p-3">
+                        <p className="text-xs text-[hsl(var(--ink-2))]">
+                          Edite os campos diretamente. Clique em <strong>Salvar edição</strong> quando terminar — o rascunho será
+                          atualizado para você e para o sistema.
+                        </p>
+                      </div>
+                      {(["cafeDaManha", "lancheDaManha", "almoco", "lancheDaTarde", "jantar"] as const).map((key) => {
+                        const meal = editableDraft.meals[key];
+                        if (!meal) return null;
+                        return (
+                          <InlineEditableMeal key={key} mealKey={key} meal={meal} onChange={handleInlineChange} />
+                        );
+                      })}
+                      <div className="flex gap-3">
+                        <Button variant="outline" className="flex-1" onClick={() => setInlineEditMode(false)}>
+                          Cancelar
+                        </Button>
+                        <Button className="flex-1 emerald-gradient text-primary-foreground" onClick={handleSaveInlineEdit}>
+                          <Save className="h-4 w-4 mr-2" />
+                          Salvar edição
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <DietPlanCard plan={selectedParsed.plan} showNotes={false} />
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Markdown: botão toggle editar / visualizar */}
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Rascunho do plano</p>
+                    {!isSelectedCompleted && reviewSheetMode === "edit" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!markdownEditMode) {
+                            setEditableMarkdown(selectedParsed.text);
+                          }
+                          setMarkdownEditMode((v) => !v);
+                        }}
+                        className={cn(
+                          "text-xs font-medium px-3 py-1.5 rounded-full border transition-colors",
+                          markdownEditMode
+                            ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))]/10 text-[hsl(var(--primary))]"
+                            : "border-[hsl(var(--surface-3))] text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+                        )}
+                      >
+                        {markdownEditMode ? "✕ Cancelar" : "✏️ Editar texto"}
+                      </button>
+                    )}
+                  </div>
+
+                  {markdownEditMode ? (
+                    <div className="space-y-3">
+                      <Textarea
+                        value={editableMarkdown}
+                        onChange={(e) => setEditableMarkdown(e.target.value)}
+                        className="font-mono text-xs leading-relaxed min-h-[400px] resize-y"
+                        placeholder="Edite o plano em Markdown..."
+                      />
+                      <div className="flex gap-3">
+                        <Button variant="outline" className="flex-1" onClick={() => setMarkdownEditMode(false)}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          className="flex-1 emerald-gradient text-primary-foreground"
+                          onClick={handleSaveMarkdownEdit}
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          Salvar texto
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <AiDraftMarkdown text={selectedParsed.text} />
+                  )}
+                </>
+              )}
 
               {/* Read-only notice for completed */}
               {isSelectedCompleted ? (
@@ -1675,52 +2416,99 @@ export default function NutritionistDashboard() {
                 </div>
               ) : (
                 <>
-                  {/* Expert Comment */}
-                  <div>
-                    <Label htmlFor="expertComment" className="font-display text-sm font-semibold">Comentário do Especialista</Label>
-                    <Textarea
-                      id="expertComment"
-                      placeholder="Adicione suas observações profissionais sobre este plano..."
-                      value={expertComment}
-                      onChange={(e) => setExpertComment(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
+                  {reviewSheetMode === "preview" && (
+                    <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-[hsl(var(--ink-2))]">
+                      Pré-visualização. Para comentar, usar ajuste por IA ou <strong className="text-[hsl(var(--ink-1))]">validar e assinar</strong>, clique em{" "}
+                      <strong className="text-[hsl(var(--ink-1))]">Validar</strong> no painel ao lado e assuma este cardápio.
+                    </div>
+                  )}
+                  {reviewSheetMode === "edit" && (
+                    <>
+                      <div>
+                        <Label htmlFor="expertComment" className="font-display text-sm font-semibold">Comentário do Especialista</Label>
+                        <Textarea
+                          id="expertComment"
+                          placeholder="Adicione suas observações profissionais sobre este plano..."
+                          value={expertComment}
+                          onChange={(e) => setExpertComment(e.target.value)}
+                          className="mt-1"
+                        />
+                      </div>
 
-                  <Card className="border-primary/30">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-display flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        Ajuste do rascunho com IA
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <p className="text-xs text-muted-foreground">{aiCorrectionHint}</p>
-                      <Textarea
-                        placeholder="Ex: Trocar o salmão por tilápia, reduzir carboidratos no jantar..."
-                        value={aiInstruction}
-                        onChange={(e) => setAiInstruction(e.target.value)}
-                        disabled={aiAdjustDisabledByPlan}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAIAdjust}
-                        disabled={adjusting || !aiInstruction.trim() || aiAdjustDisabledByPlan}
-                      >
-                        {adjusting ? "Enviando..." : "Solicitar ajuste"}
-                      </Button>
-                    </CardContent>
-                  </Card>
+                      {selectedParsed.kind === "structured" ? (
+                        <Card className="border-primary/30">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-display flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-primary" />
+                              Ajuste do rascunho com IA
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <p className="text-xs text-muted-foreground">{aiCorrectionHint}</p>
+                            <Textarea
+                              placeholder="Ex: Trocar o salmão por tilápia, reduzir carboidratos no jantar..."
+                              value={aiInstruction}
+                              onChange={(e) => setAiInstruction(e.target.value)}
+                              disabled={aiAdjustDisabledByPlan}
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={handleAIAdjust}
+                              disabled={adjusting || !aiInstruction.trim() || aiAdjustDisabledByPlan}
+                            >
+                              {adjusting ? "Enviando..." : "Solicitar ajuste"}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <>
+                          {/* IA para Markdown — mesmo fluxo de limite de tier que o formato estruturado */}
+                          <Card className="border-primary/30">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm font-display flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                Ajuste do plano com IA
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              <p className="text-xs text-muted-foreground">{aiCorrectionHint}</p>
+                              <Textarea
+                                placeholder="Ex: Tire o leite, adicione mais proteína no jantar, reduza carboidratos..."
+                                value={aiInstruction}
+                                onChange={(e) => setAiInstruction(e.target.value)}
+                                disabled={aiAdjustDisabledByPlan}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleAIAdjustMarkdown}
+                                disabled={adjusting || !aiInstruction.trim() || aiAdjustDisabledByPlan}
+                              >
+                                {adjusting ? "Enviando..." : "Solicitar ajuste"}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        </>
+                      )}
 
-                  <div className="flex gap-3">
-                    <Button variant="outline" className="flex-1" onClick={() => setViewMode("pdf")}>
-                      <FileText className="h-4 w-4 mr-2" /> Visualizar PDF
-                    </Button>
-                    <Button className="flex-1 emerald-gradient text-primary-foreground" onClick={handleApprove}>
-                      <CheckCircle2 className="h-4 w-4 mr-2" /> Validar e Assinar
-                    </Button>
-                  </div>
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            setViewMode("pdf");
+                            setPrintPlanAfterPdfOpen(true);
+                          }}
+                        >
+                          <FileText className="h-4 w-4 mr-2" /> Visualizar PDF
+                        </Button>
+                        <Button className="flex-1 emerald-gradient text-primary-foreground" onClick={handleApprove}>
+                          <CheckCircle2 className="h-4 w-4 mr-2" /> Validar e Assinar
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

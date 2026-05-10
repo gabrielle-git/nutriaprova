@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useReactToPrint } from "react-to-print";
 import { useNavigate } from "react-router-dom";
 import {
   AnimatePresence,
@@ -24,6 +25,9 @@ import {
   Flame,
   Target,
   Crown,
+  ShoppingCart,
+  Clock,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +55,8 @@ import { cn } from "@/lib/utils";
 import { getTimeGreeting } from "@/lib/timeGreeting";
 import type { DietPlan } from "@/services/n8nService";
 import PremiumDietPlanView from "./PremiumDietPlanView";
+import { isStructuredDietPlan } from "./AiDraftMarkdown";
+import GroceryChecklist from "./GroceryChecklist";
 import DietProgressTracker from "./DietProgressTracker";
 import AppHeader from "./AppHeader";
 import CheckoutModal from "./CheckoutModal";
@@ -78,7 +84,7 @@ type HistoryEntry = {
     | "in_review"
     | "completed"
     | string;
-  plan: DietPlan | null;
+  plan: DietPlan | string | null;
 };
 
 const GOAL_OPTIONS = [
@@ -108,7 +114,7 @@ type CurrentPlanState =
   | { status: "empty" }
   | {
       status: "ready";
-      plan: DietPlan | null;
+      plan: DietPlan | string | null;
       requestStatus:
         | "awaiting_payment"
         | "processing"
@@ -412,8 +418,11 @@ export default function ClientDashboard() {
   }, [profileForm.weight, profileForm.height]);
 
   const targetCalories =
-    current.status === "ready" && current.plan && typeof current.plan.totalCalories === "number"
-      ? current.plan.totalCalories
+    current.status === "ready" &&
+    current.plan &&
+    typeof current.plan === "object" &&
+    typeof (current.plan as DietPlan).totalCalories === "number"
+      ? (current.plan as DietPlan).totalCalories
       : null;
 
   const refreshCurrentPlan = useCallback(async () => {
@@ -442,7 +451,7 @@ export default function ClientDashboard() {
             | "awaiting_validation"
             | "in_review"
             | "completed";
-          ai_draft: DietPlan | null;
+          ai_draft: DietPlan | string | null;
         }
       | null;
 
@@ -1002,6 +1011,14 @@ function CurrentPlanTab({
   onRefreshPlan: () => Promise<void>;
 }) {
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [planSubTab, setPlanSubTab] = useState<"plano" | "compras">("plano");
+
+  // Ref e hook de impressão/PDF para o cliente
+  const clientPrintRef = useRef<HTMLDivElement>(null);
+  const handleClientPrint = useReactToPrint({
+    contentRef: clientPrintRef,
+    documentTitle: "Meu Plano Alimentar — nutrIAprova",
+  });
 
   if (state.status === "loading") {
     return (
@@ -1108,8 +1125,122 @@ function CurrentPlanTab({
             }}
           />
         </>
+      ) : plan && !shouldShowPaywall ? (
+        <>
+          {/* Sub-navegação interna: Meu Plano | Lista de Compras */}
+          <div
+            role="tablist"
+            className="flex gap-0.5 rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-1"
+          >
+            {(["plano", "compras"] as const).map((t) => {
+              const labels = { plano: "Meu Plano", compras: "Lista de Compras" };
+              const icons = {
+                plano: <Apple className="h-4 w-4 shrink-0" />,
+                compras: <ShoppingCart className="h-4 w-4 shrink-0" />,
+              };
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={planSubTab === t}
+                  onClick={() => setPlanSubTab(t)}
+                  className={cn(
+                    "relative z-0 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors",
+                    planSubTab === t
+                      ? "text-[hsl(var(--ink-1))]"
+                      : "text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]",
+                  )}
+                >
+                  {planSubTab === t && (
+                    <motion.div
+                      layoutId="client-subtab-bg"
+                      className="absolute inset-0 z-0 rounded-lg bg-[hsl(var(--surface-0))] shadow-sm"
+                      transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    {icons[t]}
+                    {labels[t]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Conteúdo das sub-abas */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={planSubTab}
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.2 }}
+            >
+              {planSubTab === "plano" ? (
+                <div className="space-y-3">
+                  {/* Botão de download — visível apenas quando há plano e não há paywall */}
+                  <div className="flex justify-end print:hidden">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]"
+                      onClick={() => void handleClientPrint()}
+                    >
+                      <Download className="h-4 w-4" />
+                      Baixar PDF
+                    </Button>
+                  </div>
+                  {/* Área impressa — o ref envolve SOMENTE o PremiumDietPlanView */}
+                  <div ref={clientPrintRef} className="text-foreground">
+                    <PremiumDietPlanView plan={plan} isCompleted={isCompleted} />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {isCompleted ? null : (
+                    <div className="rounded-lg border border-primary/20 bg-accent/30 p-3 flex items-start gap-2.5">
+                      <Clock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <p className="text-sm text-[hsl(var(--ink-2))]">
+                        Seu plano ainda está sendo revisado pelo nutricionista. Mas você já pode usar esta lista para se
+                        preparar!
+                      </p>
+                    </div>
+                  )}
+                  {isStructuredDietPlan(plan) ? (
+                    <GroceryChecklist dietPlan={plan} />
+                  ) : (
+                    <div className="rounded-lg border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] p-4 text-center">
+                      <p className="text-sm text-[hsl(var(--ink-2))]">
+                        Seu plano está em formato de texto. A lista de compras automática estará disponível quando o
+                        nutricionista gerar um plano estruturado.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </>
       ) : (
-        <PremiumDietPlanView plan={plan} isCompleted={isCompleted} />
+        <div className="space-y-3">
+          <div className="flex justify-end print:hidden">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 border-[hsl(var(--surface-3))] text-[hsl(var(--ink-2))] hover:text-[hsl(var(--ink-1))]"
+              onClick={() => void handleClientPrint()}
+            >
+              <Download className="h-4 w-4" />
+              Baixar PDF
+            </Button>
+          </div>
+          <div ref={clientPrintRef} className="text-foreground">
+            <PremiumDietPlanView plan={plan} isCompleted={isCompleted} />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1231,12 +1362,15 @@ function HistoryTab() {
 
       const entries = ((data ?? []) as any[])
         .map((row) => {
-          const plan = (row.ai_draft as DietPlan | null) ?? null;
+          const plan = (row.ai_draft as DietPlan | string | null) ?? null;
           return {
             id: String(row.id),
             generatedAt: String(row.created_at),
             goal: formatGoalLabel(row.client_data?.goal),
-            calories: Number(plan?.totalCalories || 0),
+            calories:
+              plan && typeof plan === "object" && typeof (plan as DietPlan).totalCalories === "number"
+                ? Number((plan as DietPlan).totalCalories)
+                : 0,
             status: String(row.status || "pending"),
             plan,
           };

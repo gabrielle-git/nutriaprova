@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { CreditCard, Loader2, QrCode, ShieldCheck, Wallet, Zap } from "lucide-react";
+import { AlertCircle, Loader2, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,7 +19,6 @@ interface PlanCheckoutModalProps {
   onApproved?: () => void | Promise<void>;
 }
 
-const PIX_CODE = "00020126580014BR.GOV.BCB.PIX0136nutriaprova-checkout-simulado5204000053039865802BR5923NUTRIAPROVA TECNOLOGIA6009SAO PAULO62070503***6304ABCD";
 /** Moedas inclusas no plano ao ativar (nunca reduz o saldo existente — só garante o mínimo do tier). */
 const PLAN_CREDIT_GRANT: Record<string, number> = {
   freemium: 5,
@@ -104,15 +99,6 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
     void loadInternalBalance();
   }, [open, user, plan]);
 
-  const copyPix = async () => {
-    try {
-      await navigator.clipboard.writeText(PIX_CODE);
-      toast.success("Código PIX copiado!");
-    } catch {
-      toast.error("Não foi possível copiar o código PIX.");
-    }
-  };
-
   const finishUpgrade = async (internalUsed: number, externalPaid: number) => {
     if (!plan) return;
     if (!user) {
@@ -158,7 +144,7 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
             user_id: user.id,
             amount: -intExternal,
             type: "plan_upgrade_external_payment",
-            description: `Pagamento externo simulado no upgrade para ${plan.name}`,
+            description: `Upgrade de plano — aguarda confirmação de pagamento`,
           });
         }
         if (txRows.length > 0) {
@@ -217,134 +203,95 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md overflow-hidden p-0">
-        <div className="emerald-gradient px-6 py-5 text-primary-foreground">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-display text-xl text-primary-foreground">
-              <ShieldCheck className="h-5 w-5" />
-              Checkout do Plano
-            </DialogTitle>
-            <DialogDescription className="text-primary-foreground/80">
-              Confirme seu pagamento simulado para ativar o upgrade imediatamente.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-4 flex items-end justify-between">
-            <div>
-              <p className="text-xs opacity-80">Plano selecionado</p>
-              <p className="font-display text-xl font-bold">{plan?.name ?? "-"}</p>
-              <p className="mt-1 text-sm opacity-90">{formatBrl(plan?.amount ?? 0)}</p>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 font-display">
+            <ShieldCheck className="h-5 w-5 text-primary" />
+            Finalizar pagamento
+          </DialogTitle>
+          <DialogDescription>
+            {plan?.name ?? "Plano"} — {formatBrl(plan?.amount ?? 0)}
+          </DialogDescription>
+        </DialogHeader>
+
+        {!!plan && (profile?.role === "nutritionist" || profile?.role === "admin") && (
+          <div className="rounded-xl border border-primary/25 bg-primary/5 p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-full bg-primary/15 p-2">
+                <Wallet className="h-4 w-4 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-[hsl(var(--ink-1))]">
+                  {loadingBalance ? "Calculando seu saldo interno..." : `Você tem ${formatBrl(internalBalance)} acumulados.`}
+                </p>
+                <p className="text-xs text-[hsl(var(--ink-2))]">
+                  Use seu saldo para ativar seu plano agora e liberar seus saques!
+                </p>
+                {!loadingBalance && balanceToUse > 0 && (
+                  <p className="text-xs text-[hsl(var(--ink-2))]">
+                    {hasEnoughBalance
+                      ? "Seu saldo cobre 100% deste plano."
+                      : `Aplicaremos ${formatBrl(balanceToUse)} e você paga só ${formatBrl(remainingToPay)} de diferença.`}
+                  </p>
+                )}
+              </div>
             </div>
-            <Badge className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground">
-              Simulado
-            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 w-full border-primary/40 bg-background"
+              onClick={handleConfirmWithBalance}
+              disabled={processing || loadingBalance || balanceToUse <= 0}
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : hasEnoughBalance ? (
+                "Pagar com meu saldo disponível"
+              ) : (
+                `Usar saldo + pagar ${formatBrl(remainingToPay)}`
+              )}
+            </Button>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-[hsl(var(--ink-2))]">
+              Integração de pagamento em configuração. Entre em contato pelo suporte para finalizar seu pedido.
+            </p>
           </div>
         </div>
 
-        <div className="p-6">
-          {!!plan && (profile?.role === "nutritionist" || profile?.role === "admin") && (
-            <div className="mb-5 rounded-xl border border-primary/25 bg-primary/5 p-4">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 rounded-full bg-primary/15 p-2">
-                  <Wallet className="h-4 w-4 text-primary" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold text-[hsl(var(--ink-1))]">
-                    {loadingBalance ? "Calculando seu saldo interno..." : `Você tem ${formatBrl(internalBalance)} acumulados.`}
-                  </p>
-                  <p className="text-xs text-[hsl(var(--ink-2))]">
-                    Use seu saldo para ativar seu plano agora e liberar seus saques!
-                  </p>
-                  {!loadingBalance && balanceToUse > 0 && (
-                    <p className="text-xs text-[hsl(var(--ink-2))]">
-                      {hasEnoughBalance
-                        ? "Seu saldo cobre 100% deste plano."
-                        : `Aplicaremos ${formatBrl(balanceToUse)} e você paga só ${formatBrl(remainingToPay)} de diferença.`}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-4 w-full border-primary/40 bg-background"
-                onClick={handleConfirmWithBalance}
-                disabled={processing || loadingBalance || balanceToUse <= 0}
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processando...
-                  </>
-                ) : hasEnoughBalance ? (
-                  "Pagar com meu saldo disponível"
-                ) : (
-                  `Usar saldo + pagar ${formatBrl(remainingToPay)}`
-                )}
-              </Button>
-            </div>
-          )}
-
-          <Tabs defaultValue="card" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="card" className="gap-2">
-                <CreditCard className="h-4 w-4" /> Cartão
-              </TabsTrigger>
-              <TabsTrigger value="pix" className="gap-2">
-                <QrCode className="h-4 w-4" /> PIX
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="card" className="mt-4 space-y-3">
-              <div>
-                <Label htmlFor="plan-card-name">Nome no Cartão</Label>
-                <Input id="plan-card-name" placeholder="Como impresso no cartão" />
-              </div>
-              <div>
-                <Label htmlFor="plan-card-number">Número do Cartão</Label>
-                <Input id="plan-card-number" placeholder="0000 0000 0000 0000" inputMode="numeric" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="plan-card-exp">Validade</Label>
-                  <Input id="plan-card-exp" placeholder="MM/AA" inputMode="numeric" />
-                </div>
-                <div>
-                  <Label htmlFor="plan-card-cvv">CVV</Label>
-                  <Input id="plan-card-cvv" placeholder="123" inputMode="numeric" />
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="pix" className="mt-4 space-y-3">
-              <div>
-                <Label htmlFor="plan-pix-code">PIX Copia e Cola</Label>
-                <Input id="plan-pix-code" value={PIX_CODE} readOnly className="font-mono text-xs" />
-              </div>
-              <Button type="button" variant="outline" className="w-full" onClick={copyPix}>
-                Copiar código PIX
-              </Button>
-            </TabsContent>
-          </Tabs>
-
-          <Button
-            type="button"
-            className="mt-6 h-12 w-full emerald-gradient text-base font-semibold text-primary-foreground"
-            onClick={handleConfirmExternalPayment}
-            disabled={!plan || processing}
-          >
-            {processing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processando...
-              </>
-            ) : (
-              <>
-                <Zap className="mr-2 h-4 w-4" />
-                Confirmar Pagamento Externo Simulado
-              </>
-            )}
-          </Button>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">[MODO DESENVOLVIMENTO] Simulação ativa</p>
+            <p className="text-xs font-mono text-amber-800/90 dark:text-amber-300/90">
+              Pagamento externo simulado (não aparece em produção)
+            </p>
+            <Button
+              type="button"
+              className="h-12 w-full emerald-gradient text-base font-semibold text-primary-foreground"
+              onClick={handleConfirmExternalPayment}
+              disabled={!plan || processing}
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Simular pagamento externo (dev only)
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
