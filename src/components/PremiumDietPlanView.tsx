@@ -80,7 +80,8 @@ export default function PremiumDietPlanView({
   const totalProtein = meals.reduce((s, m) => s + (m?.protein ?? 0), 0);
   const totalCarbs = meals.reduce((s, m) => s + (m?.carbs ?? 0), 0);
   const totalFat = meals.reduce((s, m) => s + (m?.fat ?? 0), 0);
-  const totalCal = plan.totalCalories;
+  const totalCal =
+    typeof plan.totalCalories === "number" && Number.isFinite(plan.totalCalories) ? plan.totalCalories : 0;
 
   // Macro percentages for visual chart
   const totalMacroGrams = totalProtein + totalCarbs + totalFat;
@@ -204,7 +205,7 @@ export default function PremiumDietPlanView({
 
               <div className="overflow-hidden rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))]">
                 {(["cafeDaManha", "lancheDaManha", "almoco", "lancheDaTarde", "jantar"] as const).map((key) => {
-                  const meal = plan.meals[key];
+                  const meal = plan.meals?.[key];
                   if (!meal) return null;
                   const meta = MEAL_LABELS[key] || { label: key, emoji: "🍽️", time: "" };
                   return (
@@ -230,7 +231,7 @@ export default function PremiumDietPlanView({
                           </Button>
                           <Badge variant="outline" className="text-xs font-mono">
                             <Flame className="h-3 w-3 mr-1 text-destructive" />
-                            {meal.calories} kcal
+                            {typeof meal.calories === "number" && Number.isFinite(meal.calories) ? meal.calories : "—"} kcal
                           </Badge>
                         </div>
                       </div>
@@ -264,17 +265,17 @@ export default function PremiumDietPlanView({
                             <p className="text-xs font-display font-semibold uppercase tracking-wider text-muted-foreground">Ingredientes</p>
                           </div>
                           <div className="grid grid-cols-1 gap-1">
-                            {meal.ingredients.map((item, i) => (
+                            {(meal.ingredients ?? []).map((item, i) => (
                               <div key={i} className="flex items-start gap-2 text-sm">
                                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
-                                <span className="text-foreground/80">{item}</span>
+                                <span className="text-foreground/80">{typeof item === "string" ? item : String(item)}</span>
                               </div>
                             ))}
                           </div>
                         </div>
 
                         {/* Instructions */}
-                        {meal.instructions && (
+                        {typeof meal.instructions === "string" && meal.instructions.trim().length > 0 && (
                           <div>
                             <div className="flex items-center gap-1.5 mb-2">
                               <ChefHat className="h-3.5 w-3.5 text-primary" />

@@ -63,7 +63,7 @@ function MealCard({ mealKey, meal }: { mealKey: string; meal: Meal }) {
             <p className="text-xs font-display font-semibold uppercase tracking-wider text-muted-foreground">Ingredientes</p>
           </div>
           <div className="grid grid-cols-1 gap-1">
-            {meal.ingredients.map((item, i) => (
+            {(meal.ingredients ?? []).map((item, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
                 <span className="text-foreground/80">{item}</span>
@@ -73,7 +73,7 @@ function MealCard({ mealKey, meal }: { mealKey: string; meal: Meal }) {
         </div>
 
         {/* Instructions */}
-        {meal.instructions && (
+        {typeof meal.instructions === "string" && meal.instructions.trim().length > 0 && (
           <div>
             <div className="flex items-center gap-1.5 mb-2">
               <ChefHat className="h-3.5 w-3.5 text-primary" />
@@ -110,9 +110,11 @@ interface DietPlanCardProps {
 }
 
 export default function DietPlanCard({ plan, showNotes = true }: DietPlanCardProps) {
-  const totalProtein = Object.values(plan.meals).reduce((sum, m) => sum + m.protein, 0);
-  const totalCarbs = Object.values(plan.meals).reduce((sum, m) => sum + m.carbs, 0);
-  const totalFat = Object.values(plan.meals).reduce((sum, m) => sum + m.fat, 0);
+  const mealsMap =
+    plan?.meals && typeof plan.meals === "object" && !Array.isArray(plan.meals) ? plan.meals : ({} as DietPlan["meals"]);
+  const totalProtein = Object.values(mealsMap).reduce((sum, m) => sum + (m?.protein ?? 0), 0);
+  const totalCarbs = Object.values(mealsMap).reduce((sum, m) => sum + (m?.carbs ?? 0), 0);
+  const totalFat = Object.values(mealsMap).reduce((sum, m) => sum + (m?.fat ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -124,7 +126,7 @@ export default function DietPlanCard({ plan, showNotes = true }: DietPlanCardPro
             <p className="text-sm text-muted-foreground">Gerado por IA • Validado por Nutricionista</p>
           </div>
           <Badge className="emerald-gradient text-primary-foreground text-sm px-4 py-1.5">
-            {plan.totalCalories} kcal/dia
+            {typeof plan.totalCalories === "number" && Number.isFinite(plan.totalCalories) ? plan.totalCalories : "—"} kcal/dia
           </Badge>
         </div>
 
@@ -139,7 +141,7 @@ export default function DietPlanCard({ plan, showNotes = true }: DietPlanCardPro
       {/* Meals - enforced chronological order */}
       <div className="space-y-4">
         {(["cafeDaManha", "lancheDaManha", "almoco", "lancheDaTarde", "jantar"] as const).map((key) => {
-          const meal = plan.meals[key];
+          const meal = mealsMap[key];
           if (!meal) return null;
           return <MealCard key={key} mealKey={key} meal={meal} />;
         })}

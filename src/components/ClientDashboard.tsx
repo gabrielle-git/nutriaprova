@@ -53,9 +53,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { getTimeGreeting } from "@/lib/timeGreeting";
+import {
+  FOOD_PREFERENCE_OPTIONS,
+  RESTRICTION_OPTIONS,
+  partitionLegacyVegetarianoFromAllergies,
+} from "@/lib/clientFormDietOptions";
 import type { DietPlan } from "@/services/n8nService";
 import PremiumDietPlanView from "./PremiumDietPlanView";
-import { isStructuredDietPlan } from "./AiDraftMarkdown";
+import { isStructuredDietPlan, planPayloadFromDraftAndNotes } from "./AiDraftMarkdown";
 import GroceryChecklist from "./GroceryChecklist";
 import DietProgressTracker from "./DietProgressTracker";
 import AppHeader from "./AppHeader";
@@ -94,19 +99,6 @@ const GOAL_OPTIONS = [
   { value: "diabetes", label: "Controle de Diabetes", emoji: "🩺" },
   { value: "performance", label: "Performance Esportiva", emoji: "⚡" },
   { value: "longevidade", label: "Longevidade", emoji: "🧬" },
-];
-
-// Alinhado com o onboarding (ClientOnboarding.tsx) — mantemos as mesmas
-// labels para que o payload enviado ao n8n continue consistente.
-const ALLERGY_OPTIONS = [
-  { value: "gluten", label: "Sem Glúten", emoji: "🌾" },
-  { value: "lactose", label: "Zero Lactose", emoji: "🥛" },
-  { value: "amendoim", label: "Amendoim", emoji: "🥜" },
-  { value: "frutos_do_mar", label: "Frutos do Mar", emoji: "🦐" },
-  { value: "ovo", label: "Ovo", emoji: "🥚" },
-  { value: "soja", label: "Soja", emoji: "🫘" },
-  { value: "vegano", label: "Vegano", emoji: "🌱" },
-  { value: "vegetariano", label: "Vegetariano", emoji: "🥬" },
 ];
 
 type CurrentPlanState =
@@ -316,6 +308,7 @@ export default function ClientDashboard() {
     goal: "",
     bodyFat: "",
     allergies: [] as string[],
+    foodPreferences: [] as string[],
   });
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -364,11 +357,19 @@ export default function ClientDashboard() {
         }
         return latestClientData[key];
       };
-      const allergies = Array.isArray(read("allergies"))
-        ? read("allergies")
+      const rawAllergies = Array.isArray(read("allergies"))
+        ? (read("allergies") as string[]).filter((x): x is string => typeof x === "string")
         : typeof profileRow?.allergies === "string"
-        ? profileRow.allergies.split(",").map((item: string) => item.trim()).filter(Boolean)
+          ? profileRow.allergies.split(",").map((item: string) => item.trim()).filter(Boolean)
+          : [];
+      let foodPreferences = Array.isArray(read("foodPreferences"))
+        ? (read("foodPreferences") as unknown[]).filter((x): x is string => typeof x === "string")
         : [];
+      const { restrictions, migratedPreferences } = partitionLegacyVegetarianoFromAllergies(rawAllergies);
+      const allergies = restrictions;
+      for (const m of migratedPreferences) {
+        if (!foodPreferences.includes(m)) foodPreferences = [...foodPreferences, m];
+      }
       const goal = read("goal") || profileRow?.goals || "";
 
       setCurrentClientData({ ...latestClientData, ...profileClientData });
@@ -382,6 +383,7 @@ export default function ClientDashboard() {
         goal: normalizeGoalValue(goal),
         bodyFat: read("bodyFat") ? String(read("bodyFat")) : "",
         allergies,
+        foodPreferences,
       });
     };
 
@@ -430,7 +432,7 @@ export default function ClientDashboard() {
 
     const { data, error } = await supabase
       .from("diet_requests")
-      .select("id, status, ai_draft, created_at")
+      .select("id, status, ai_draft, notes, created_at")
       .eq("client_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -452,6 +454,7 @@ export default function ClientDashboard() {
             | "in_review"
             | "completed";
           ai_draft: DietPlan | string | null;
+          notes: string | null;
         }
       | null;
 
@@ -463,9 +466,11 @@ export default function ClientDashboard() {
       return;
     }
 
+    const plan = planPayloadFromDraftAndNotes(row.ai_draft, row.notes);
+
     setCurrent({
       status: "ready",
-      plan: row.ai_draft ?? null,
+      plan,
       requestStatus: row.status,
       isCompleted: row.status === "completed",
     });
@@ -555,6 +560,7 @@ export default function ClientDashboard() {
       goal: profileForm.goal,
       bodyFat: profileForm.bodyFat,
       allergies: profileForm.allergies,
+      foodPreferences: profileForm.foodPreferences,
     };
 
     try {
@@ -1343,11 +1349,11 @@ function HistoryTab() {
 
     let cancelled = false;
 
-    const fetchHistory = async () => {
-      setLoading(true);
+    const fetchHistory = async (silent = false) => {
+      if (!silent) setLoading(true);
       const { data, error } = await supabase
         .from("diet_requests")
-        .select("id, status, client_data, ai_draft, created_at")
+        .select("id, status, client_data, ai_draft, notes, created_at")
         .eq("client_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -1356,13 +1362,13 @@ function HistoryTab() {
       if (error) {
         console.warn("[ClientDashboard] history fetch:", error.message);
         setHistory([]);
-        setLoading(false);
+        if (!silent) setLoading(false);
         return;
       }
 
       const entries = ((data ?? []) as any[])
         .map((row) => {
-          const plan = (row.ai_draft as DietPlan | string | null) ?? null;
+          const plan = planPayloadFromDraftAndNotes(row.ai_draft, row.notes);
           return {
             id: String(row.id),
             generatedAt: String(row.created_at),
@@ -1377,13 +1383,25 @@ function HistoryTab() {
         });
 
       setHistory(entries);
-      setLoading(false);
+      if (!silent) setLoading(false);
     };
 
-    void fetchHistory();
+    void fetchHistory(false);
+
+    const historyChannel = supabase
+      .channel(`client-dashboard-history-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "diet_requests", filter: `client_id=eq.${user.id}` },
+        () => {
+          void fetchHistory(true);
+        },
+      )
+      .subscribe();
 
     return () => {
       cancelled = true;
+      supabase.removeChannel(historyChannel);
     };
   }, [user]);
 
@@ -1522,6 +1540,7 @@ type ProfileForm = {
   goal: string;
   bodyFat: string;
   allergies: string[];
+  foodPreferences: string[];
 };
 
 function SettingsTab({
@@ -1637,59 +1656,115 @@ function SettingsTab({
               </p>
             </div>
 
-            {/* Alergias — multi-select, com toggle por botão. */}
-            <div className="space-y-1.5">
-              <Label>Alergias e Restrições</Label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {ALLERGY_OPTIONS.map((opt, index) => {
-                  const selected = form.allergies.includes(opt.label);
-                  return (
-                    <motion.div
-                      key={opt.value}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
-                      whileHover={{ x: 6, backgroundColor: "hsl(var(--surface-1))" }}
-                      className="rounded-lg"
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          update({
-                            allergies: selected
-                              ? form.allergies.filter((a) => a !== opt.label)
-                              : [...form.allergies, opt.label],
-                          })
-                        }
-                        className={`flex w-full items-center gap-2 rounded-lg border-2 p-2.5 text-left transition-all ${
-                          selected
-                            ? "border-destructive/60 bg-destructive/5"
-                            : "border-border hover:border-primary/50"
-                        }`}
-                        aria-pressed={selected}
+            {/* Restrições e preferências — alinhado ao onboarding / n8n */}
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-orange-900 dark:text-orange-100">Restrições e alergias</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  O que a IA não pode incluir (alergias, intolerâncias, exclusões).
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {RESTRICTION_OPTIONS.map((opt, index) => {
+                    const selected = form.allergies.includes(opt.label);
+                    return (
+                      <motion.div
+                        key={opt.value}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                        whileHover={{ x: 6, backgroundColor: "hsl(var(--surface-1))" }}
+                        className="rounded-lg"
                       >
-                        <span className="text-base" aria-hidden>
-                          {opt.emoji}
-                        </span>
-                        <span className="flex-1 text-xs font-medium">{opt.label}</span>
-                        <motion.div
-                          animate={{
-                            scale: selected ? [1, 1.3, 1] : 1,
-                            rotate: selected ? [0, 8, 0] : 0,
-                          }}
-                          transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
-                          className="flex shrink-0"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            update({
+                              allergies: selected
+                                ? form.allergies.filter((a) => a !== opt.label)
+                                : [...form.allergies, opt.label],
+                            })
+                          }
+                          className={`flex w-full items-center gap-2 rounded-lg border-2 p-2.5 text-left transition-all ${
+                            selected
+                              ? "border-orange-500/70 bg-orange-500/10"
+                              : "border-border hover:border-orange-500/40"
+                          }`}
+                          aria-pressed={selected}
                         >
-                          {selected && <CheckCircle2 className="h-3.5 w-3.5 text-destructive" />}
-                        </motion.div>
-                      </button>
-                    </motion.div>
-                  );
-                })}
+                          <span className="text-base" aria-hidden>
+                            {opt.emoji}
+                          </span>
+                          <span className="flex-1 text-xs font-medium">{opt.label}</span>
+                          <motion.div
+                            animate={{
+                              scale: selected ? [1, 1.3, 1] : 1,
+                              rotate: selected ? [0, 8, 0] : 0,
+                            }}
+                            transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+                            className="flex shrink-0"
+                          >
+                            {selected && <CheckCircle2 className="h-3.5 w-3.5 text-orange-600 dark:text-orange-300" />}
+                          </motion.div>
+                        </button>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                A IA considera estas restrições em todos os próximos planos.
-              </p>
+
+              <div className="space-y-1.5">
+                <Label className="text-emerald-900 dark:text-emerald-100">Preferências alimentares</Label>
+                <p className="text-[11px] text-muted-foreground">
+                  Gostos e estilo — a IA usa como guia, sem confundir com alergia.
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {FOOD_PREFERENCE_OPTIONS.map((opt, index) => {
+                    const selected = form.foodPreferences.includes(opt.label);
+                    return (
+                      <motion.div
+                        key={opt.value}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                        whileHover={{ x: 6, backgroundColor: "hsl(var(--surface-1))" }}
+                        className="rounded-lg"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            update({
+                              foodPreferences: selected
+                                ? form.foodPreferences.filter((a) => a !== opt.label)
+                                : [...form.foodPreferences, opt.label],
+                            })
+                          }
+                          className={`flex w-full items-center gap-2 rounded-lg border-2 p-2.5 text-left transition-all ${
+                            selected
+                              ? "border-emerald-500/70 bg-emerald-500/10"
+                              : "border-border hover:border-emerald-500/40"
+                          }`}
+                          aria-pressed={selected}
+                        >
+                          <span className="text-base" aria-hidden>
+                            {opt.emoji}
+                          </span>
+                          <span className="flex-1 text-xs font-medium">{opt.label}</span>
+                          <motion.div
+                            animate={{
+                              scale: selected ? [1, 1.3, 1] : 1,
+                              rotate: selected ? [0, 8, 0] : 0,
+                            }}
+                            transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+                            className="flex shrink-0"
+                          >
+                            {selected && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />}
+                          </motion.div>
+                        </button>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             <Separator />

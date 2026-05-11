@@ -106,7 +106,12 @@ export default function AdminSimulationView({ request, open, onOpenChange, onCom
                     } • Peso: {clientData.weight}kg • Altura: {clientData.height}cm
                   </p>
                   <p>Objetivo: {clientData.goal} • Atividade: {clientData.activityLevel}</p>
-                  {clientData.allergies?.length > 0 && <p>Alergias: {clientData.allergies.join(", ")}</p>}
+                  {clientData.allergies?.length > 0 && (
+                    <p>Restrições/alergias: {clientData.allergies.join(", ")}</p>
+                  )}
+                  {clientData.foodPreferences?.length > 0 && (
+                    <p>Preferências alimentares: {clientData.foodPreferences.join(", ")}</p>
+                  )}
                   {clientData.additionalNotes && (
                     <p className="mt-2 p-2 bg-accent/50 rounded text-xs italic">📝 {clientData.additionalNotes}</p>
                   )}

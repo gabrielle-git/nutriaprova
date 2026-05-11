@@ -2,42 +2,23 @@
  * Webhooks n8n — geração/ajuste de dieta.
  *
  * Sincronização com o dashboard:
- * - O fluxo do **cliente** (ex.: ClientOnboarding) pode chamar o webhook; o n8n deve persistir o
- *   resultado em `public.diet_requests.ai_draft` via **Supabase REST** com a mesma **Project URL**
- *   do app (`VITE_SUPABASE_URL`).
- * - O **ID** no PATCH/UPSERT deve ser o UUID exato de `diet_requests.id` que o front lê (campos como
- *   `request_id`, `diet_request_id` ou `target_id` no JSON devem coincidir com essa linha).
- * - O painel do nutricionista **não** dispara geração aqui; só consome `ai_draft` depois do n8n.
- *
- * Atenção ao path `/webhook-test/...` vs `/webhook/...`:
- * - `/webhook-test/<id>` SÓ responde quando o usuário do n8n está com a aba do
- *   editor aberta no botão "Listen for test event". Em produção (ou com o
- *   Docker rodando sem ninguém clicando "Listen"), esse path devolve 404 e o
- *   plano nunca é gerado.
- * - `/webhook/<id>` é o endpoint persistente, que só passa a existir DEPOIS de
- *   o workflow ser ativado (toggle "Active" no canto superior direito do n8n).
- *
- * Configure a URL final em `.env.local`:
- *   VITE_N8N_GENERATE_WEBHOOK_URL=http://localhost:5678/webhook/gerar-dieta
- *   VITE_N8N_ADJUST_WEBHOOK_URL=http://localhost:5678/webhook/ajustar-dieta
+ * - O fluxo do **cliente** (ex.: ClientOnboarding) chama o webhook; o n8n deve persistir o
+ * resultado em `public.diet_requests.ai_draft` via **Supabase REST**.
  */
 const N8N_GENERATE_WEBHOOK_URL =
   (typeof import.meta.env.VITE_N8N_GENERATE_WEBHOOK_URL === "string" &&
     import.meta.env.VITE_N8N_GENERATE_WEBHOOK_URL.trim()) ||
-  "http://localhost:5678/webhook/gerar-dieta";
+  "http://localhost:5678/webhook/ajustar-dieta";
 const N8N_ADJUST_WEBHOOK_URL =
   (typeof import.meta.env.VITE_N8N_ADJUST_WEBHOOK_URL === "string" &&
     import.meta.env.VITE_N8N_ADJUST_WEBHOOK_URL.trim()) ||
   "http://localhost:5678/webhook/ajustar-dieta";
 
 if (import.meta.env.DEV) {
-  // Aviso explícito em dev se alguém esquecer no path de "test" — esse foi
-  // exatamente o motivo do "n8n não gera nada em produção" no início do MVP.
-  if (N8N_GENERATE_WEBHOOK_URL.includes("/webhook-test/")) {
+  if (N8N_ADJUST_WEBHOOK_URL.includes("/webhook-test/")) {
     console.warn(
-      "[n8nService] VITE_N8N_GENERATE_WEBHOOK_URL aponta para /webhook-test/ — " +
-        "esse endpoint só funciona enquanto o n8n está com 'Listen for test event' ativo. " +
-        "Troque para /webhook/<id> e ative o workflow para funcionar de verdade.",
+      "[n8nService] VITE_N8N_ADJUST_WEBHOOK_URL aponta para /webhook-test/ — " +
+        "troque para /webhook/<id> e ative o workflow para funcionar de verdade.",
     );
   }
 }
@@ -48,16 +29,27 @@ export interface ClientData {
   gender: "masculino" | "feminino";
   weight: number;
   height: number;
-  /** Percentual de gordura corporal (opcional), ex.: 18.5 */
   bodyFat?: number;
   goal: string;
   allergies: string[];
+  foodPreferences?: string[];
   activityLevel: string;
   additionalNotes?: string;
-  /** Peso alvo (kg) — perda/ganho de peso. */
   targetWeight?: number;
-  /** Prazo em meses para a meta de composição. */
   targetTimelineMonths?: number;
+}
+
+export function formatGeminiDietRestrictionAndPreferenceBlock(clientData: ClientData): string {
+  const restrictions = clientData.allergies?.length
+    ? clientData.allergies.join("; ")
+    : "Nenhuma informada pelo paciente.";
+  const preferences = clientData.foodPreferences?.length
+    ? clientData.foodPreferences.join("; ")
+    : "Nenhuma preferência específica informada.";
+  return (
+    `ALERGIAS/RESTRIÇÕES ABSOLUTAS: ${restrictions}\n` +
+    `PREFERÊNCIAS DO PACIENTE: ${preferences}`
+  );
 }
 
 export interface Meal {
@@ -93,7 +85,6 @@ async function logN8nError(label: string, error: unknown, data: unknown) {
 }
 
 async function postToN8n(url: string, payload: Record<string, unknown>) {
-  // Contrato explícito com o n8n: sempre POST com JSON no body.
   console.log("URL_CHAMADA:", url);
   return fetch(url, {
     method: 'POST',
@@ -104,26 +95,66 @@ async function postToN8n(url: string, payload: Record<string, unknown>) {
   });
 }
 
+function buildGenerateDietWebhookPayload(clientData: ClientData, meta?: Record<string, unknown>) {
+  const geminiDietContextNarrative = formatGeminiDietRestrictionAndPreferenceBlock(clientData);
+  return {
+    action: 'generate',
+    tipo: 'gerar',
+    clientData,
+    geminiDietContextNarrative,
+    geminiPromptHints: geminiDietContextNarrative,
+    ...meta,
+  } as Record<string, unknown>;
+}
+
+export type FireGenerateDietWebhookOptions = {
+  /** Chamado quando a rede falha ou o HTTP não é OK (uso típico: marcar falha em `diet_requests`). */
+  onFailure?: (error: unknown) => void;
+};
+
 /**
- * Dispara o webhook de geração. Sucesso = HTTP 200 (ou outro 2xx). Não lê nem interpreta o corpo.
- * O plano é persistido pelo próprio fluxo n8n → Supabase.
+ * Dispara o webhook de geração sem esperar pela resposta (não há `await` no fetch —
+ * apenas `void` sobre a Promise ao retornar). Útil para redirecionar o cliente antes da IA terminar.
+ */
+export function fireGenerateDietWebhook(
+  clientData: ClientData,
+  meta?: Record<string, unknown>,
+  options?: FireGenerateDietWebhookOptions,
+): void {
+  const payload = buildGenerateDietWebhookPayload(clientData, meta);
+  void postToN8n(N8N_ADJUST_WEBHOOK_URL, payload)
+    .then((response) => {
+      if (response.ok) return;
+      return response.text().then((errorText) => {
+        const error = new Error(`HTTP ${response.status}: ${errorText}`);
+        void logN8nError('fireGenerateDietWebhook', error, { clientData, meta });
+        options?.onFailure?.(error);
+      });
+    })
+    .catch((error: unknown) => {
+      void logN8nError('fireGenerateDietWebhook', error, { clientData, meta });
+      options?.onFailure?.(error);
+    });
+}
+
+/**
+ * Dispara o webhook de geração. 
+ * Agora aponta para o mesmo endpoint de ajuste, diferenciado pelo campo 'tipo' e 'action'.
  */
 export async function triggerGenerateDietWebhook(
   clientData: ClientData,
   meta?: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const response = await postToN8n(N8N_GENERATE_WEBHOOK_URL, {
-      action: 'generate',
-      clientData,
-      ...meta,
-    });
+    const response = await postToN8n(
+      N8N_ADJUST_WEBHOOK_URL,
+      buildGenerateDietWebhookPayload(clientData, meta),
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
-    // Sucesso: não consumimos o corpo — o n8n responde antes do plano existir.
   } catch (error) {
     await logN8nError('triggerGenerateDietWebhook', error, { clientData, meta });
     throw new Error(error instanceof Error ? error.message : 'Erro ao acionar geração do plano');
@@ -134,6 +165,7 @@ export async function adjustDietWithAI(currentPlan: DietPlan, instruction: strin
   try {
     const response = await postToN8n(N8N_ADJUST_WEBHOOK_URL, {
       action: 'adjust',
+      tipo: 'ajustar_json',
       currentPlan,
       instruction,
     });
@@ -144,10 +176,7 @@ export async function adjustDietWithAI(currentPlan: DietPlan, instruction: strin
     }
 
     const data = await response.json();
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
+    if (data.error) throw new Error(data.error);
 
     return data as DietPlan;
   } catch (error) {
@@ -156,17 +185,6 @@ export async function adjustDietWithAI(currentPlan: DietPlan, instruction: strin
   }
 }
 
-/**
- * Manda o Markdown bruto do plano + instrução do nutri para o webhook n8n de ajuste.
- * O n8n deve usar a mesma instrução (ex: "tire o leite") e reescrever o Markdown,
- * devolvendo { markdownText: string } no corpo da resposta.
- *
- * Contrato de resposta esperado do n8n:
- *   { "markdownText": "# Plano Alimentar\n..." }
- *
- * Se o n8n ainda não tiver esse contrato implementado, retorna o markdown original
- * com um aviso de fallback no console — sem quebrar o fluxo.
- */
 export async function adjustMarkdownWithAI(
   currentMarkdown: string,
   instruction: string,
@@ -174,6 +192,7 @@ export async function adjustMarkdownWithAI(
   try {
     const response = await postToN8n(N8N_ADJUST_WEBHOOK_URL, {
       action: "adjust_markdown",
+      tipo: "ajustar_markdown",
       currentMarkdown,
       instruction,
     });
@@ -184,12 +203,8 @@ export async function adjustMarkdownWithAI(
     }
 
     const data = (await response.json()) as Record<string, unknown>;
+    if (data.error) throw new Error(String(data.error));
 
-    if (data.error) {
-      throw new Error(String(data.error));
-    }
-
-    // Aceita tanto { markdownText: "..." } quanto { text: "..." } como fallback.
     const result = (data.markdownText ?? data.text ?? data.markdown) as string | undefined;
     if (typeof result !== "string" || !result.trim()) {
       throw new Error("Resposta do n8n não continha campo markdownText válido.");

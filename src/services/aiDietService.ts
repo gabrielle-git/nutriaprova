@@ -7,6 +7,7 @@ export interface ClientData {
   height: number;
   goal: string;
   allergies: string[];
+  foodPreferences?: string[];
   activityLevel: string;
   additionalNotes?: string;
 }

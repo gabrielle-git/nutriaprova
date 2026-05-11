@@ -13,6 +13,7 @@ interface ClientData {
   goal: string;
   activityLevel: string;
   allergies: string[];
+  foodPreferences?: string[];
   additionalNotes?: string;
 }
 
@@ -27,7 +28,8 @@ FORMATO DE SAÍDA — LEIA COM MUITA ATENÇÃO:
 - Todos os 5 campos de refeição são obrigatórios: cafeDaManha, lancheDaManha, almoco, lancheDaTarde, jantar.
 - "generatedAt" deve ser uma string ISO 8601 (ex.: "2025-01-15T12:00:00.000Z").
 - "ingredients" é sempre um array de strings, mesmo que tenha um único item.
-- Se houver alergias informadas, NUNCA inclua esses alimentos nas receitas.
+- Se houver alergias ou restrições absolutas informadas, NUNCA inclua esses alimentos nas receitas.
+- "PREFERÊNCIAS DO PACIENTE" orientam o estilo do cardápio, mas não substituem restrições de saúde.
 - Se qualquer instrução acima conflitar com sua vontade de "explicar", PREVALECE o formato JSON puro.
 
 SCHEMA EXATO:
@@ -45,7 +47,19 @@ SCHEMA EXATO:
 }`;
 
 function buildUserPrompt(data: ClientData): string {
-  return `Crie um plano alimentar para: ${data.age} anos, ${data.weight}kg, ${data.height}cm. Objetivo: ${data.goal}. Atividade: ${data.activityLevel}. Alergias: ${data.allergies.join(", ")}. Notas: ${data.additionalNotes || "Nenhuma"}.`;
+  const restrictions = data.allergies.length
+    ? data.allergies.join("; ")
+    : "Nenhuma informada pelo paciente.";
+  const preferences = (data.foodPreferences?.length ?? 0)
+    ? (data.foodPreferences as string[]).join("; ")
+    : "Nenhuma preferência específica informada.";
+  return (
+    `Crie um plano alimentar para: ${data.age} anos, ${data.weight}kg, ${data.height}cm. ` +
+    `Objetivo: ${data.goal}. Atividade: ${data.activityLevel}.\n` +
+    `ALERGIAS/RESTRIÇÕES ABSOLUTAS: ${restrictions}\n` +
+    `PREFERÊNCIAS DO PACIENTE: ${preferences}\n` +
+    `Notas adicionais do paciente: ${data.additionalNotes || "Nenhuma"}.`
+  );
 }
 
 // Log de boot: confirma que a secret foi carregada na Edge Function sem expor

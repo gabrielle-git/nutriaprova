@@ -11,7 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ArrowRight, ArrowLeft, Sparkles, Lock, Check, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { triggerGenerateDietWebhook, type ClientData, type DietPlan } from "@/services/n8nService";
+import { fireGenerateDietWebhook, type ClientData, type DietPlan } from "@/services/n8nService";
+import {
+  FOOD_PREFERENCE_OPTIONS,
+  RESTRICTION_OPTIONS,
+  partitionLegacyVegetarianoFromAllergies,
+} from "@/lib/clientFormDietOptions";
 import { toast } from "sonner";
 import PremiumDietPlanView from "./PremiumDietPlanView";
 import ClientCompletedDiet from "./ClientCompletedDiet";
@@ -27,18 +32,7 @@ const GOAL_OPTIONS = [
   { value: "longevidade", label: "Longevidade", emoji: "🧬" },
 ];
 
-const ALLERGY_OPTIONS = [
-  { value: "gluten", label: "Intolerância ao Glúten", emoji: "🌾" },
-  { value: "lactose", label: "Intolerância à Lactose", emoji: "🥛" },
-  { value: "amendoim", label: "Alergia a Amendoim", emoji: "🥜" },
-  { value: "frutos_do_mar", label: "Alergia a Frutos do Mar", emoji: "🦐" },
-  { value: "ovo", label: "Alergia a Ovo", emoji: "🥚" },
-  { value: "soja", label: "Alergia a Soja", emoji: "🫘" },
-  { value: "vegano", label: "Dieta Vegana", emoji: "🌱" },
-  { value: "vegetariano", label: "Dieta Vegetariana", emoji: "🥬" },
-];
-
-const STEPS = ["Dados Básicos", "Objetivos", "Restrições", "Gerando..."];
+const STEPS = ["Dados Básicos", "Objetivos", "Restrições e preferências", "Gerando..."];
 
 type ClientOnboardingForm = Omit<ClientData, "gender" | "weight" | "height" | "bodyFat"> & {
   gender: ClientData["gender"] | "";
@@ -59,6 +53,7 @@ const EMPTY_FORM: ClientOnboardingForm = {
   bodyFat: "",
   goal: "",
   allergies: [],
+  foodPreferences: [],
   activityLevel: "moderate",
   additionalNotes: "",
   targetWeight: "",
@@ -112,6 +107,7 @@ const mergeClientData = (
     height: read("height"),
     goal: read("goal"),
     allergies: read("allergies"),
+    foodPreferences: read("foodPreferences"),
     activityLevel: read("activityLevel"),
     additionalNotes: read("additionalNotes"),
     targetWeight: read("targetWeight"),
@@ -181,11 +177,19 @@ export default function ClientOnboarding() {
       const hydrated = mergeClientData(profileClientData, latestClientData);
       const birthDate = (hydrated.birthDate || profileRow?.birth_date || "") as string;
       const goals = parseGoalValues(hydrated.goal || profileRow?.goals);
-      const allergies = Array.isArray(hydrated.allergies)
-        ? hydrated.allergies
+      const rawAllergies = Array.isArray(hydrated.allergies)
+        ? hydrated.allergies.filter((x): x is string => typeof x === "string")
         : typeof profileRow?.allergies === "string"
-        ? profileRow.allergies.split(",").map((item: string) => item.trim()).filter(Boolean)
+          ? profileRow.allergies.split(",").map((item: string) => item.trim()).filter(Boolean)
+          : [];
+      let foodPreferences = Array.isArray(hydrated.foodPreferences)
+        ? hydrated.foodPreferences.filter((x): x is string => typeof x === "string")
         : [];
+      const { restrictions, migratedPreferences } = partitionLegacyVegetarianoFromAllergies(rawAllergies);
+      let allergies = restrictions;
+      for (const m of migratedPreferences) {
+        if (!foodPreferences.includes(m)) foodPreferences = [...foodPreferences, m];
+      }
 
       setFormData({
         ...EMPTY_FORM,
@@ -200,6 +204,7 @@ export default function ClientOnboarding() {
         bodyFat: coerceOptionalBodyFatPercent(hydrated.bodyFat),
         goal: goals.join(", "),
         allergies,
+        foodPreferences,
         activityLevel:
           typeof hydrated.activityLevel === "string" && hydrated.activityLevel
             ? hydrated.activityLevel
@@ -271,13 +276,21 @@ export default function ClientOnboarding() {
     );
   };
 
-  const toggleAllergy = (allergy: string) => {
+  const toggleRestriction = (label: string) => {
     const current = formData.allergies;
     setFormData({
       ...formData,
-      allergies: current.includes(allergy)
-        ? current.filter((a) => a !== allergy)
-        : [...current, allergy],
+      allergies: current.includes(label) ? current.filter((a) => a !== label) : [...current, label],
+    });
+  };
+
+  const toggleFoodPreference = (label: string) => {
+    const current = formData.foodPreferences;
+    setFormData({
+      ...formData,
+      foodPreferences: current.includes(label)
+        ? current.filter((a) => a !== label)
+        : [...current, label],
     });
   };
 
@@ -335,6 +348,7 @@ export default function ClientOnboarding() {
         : {}),
       goal: selectedGoals.join(", "),
       allergies: formData.allergies,
+      foodPreferences: formData.foodPreferences.length > 0 ? formData.foodPreferences : undefined,
       activityLevel: formData.activityLevel,
       additionalNotes: formData.additionalNotes?.trim() || undefined,
       ...(needsCompositionMeta
@@ -380,46 +394,33 @@ export default function ClientOnboarding() {
       const requestId = String(createdRequest.id);
       setDietRequestId(requestId);
 
-      // 2) Aciona o n8n — sucesso = HTTP OK sem ler JSON no corpo; o plano chega pelo Supabase.
-      try {
-        await triggerGenerateDietWebhook(dataToSend, {
+      // 2) Aciona o n8n em segundo plano — o cliente não espera a IA; o plano chega via Supabase.
+      fireGenerateDietWebhook(
+        dataToSend,
+        {
+          requestId,
           request_id: requestId,
           diet_request_id: requestId,
-        });
-      } catch (aiError: unknown) {
-        console.error("[ClientOnboarding] n8nService falhou:", aiError);
-        toast.error(
-          "Sistema indisponível: Não foi possível gerar o plano no momento. Tente novamente.",
-        );
-        await supabase
-          .from("diet_requests")
-          .update({
-            notes: "Falha ao acionar IA. Tentar novamente.",
-          } as any)
-          .eq("id", requestId);
-        setStep(2);
-        return;
-      }
+        },
+        {
+          onFailure: () => {
+            void supabase
+              .from("diet_requests")
+              .update({
+                notes: "Falha ao acionar IA. Tentar novamente.",
+              } as any)
+              .eq("id", requestId);
+          },
+        },
+      );
 
       toast.success("Recebemos seu pedido! Abrindo seu painel…");
       navigate("/dashboard", { replace: true });
 
-      // 3) Persistência pós-webhook em segundo plano (não atrasa o redirect).
-      //    `assigned_nutritionist_id` agora é gravado no INSERT acima — aqui só
-      //    atualizamos a copy da nota e o cache do client_data no profile.
+      // 3) Atualiza o cache de `client_data` no perfil em segundo plano — não atrasa o redirect.
+      //    Evitamos tocar em `notes` aqui para não disputar com `onFailure` do webhook ao n8n.
       void (async () => {
         try {
-          const { error: updateRequestError } = await supabase
-            .from("diet_requests")
-            .update({
-              notes: "IA gerando seu plano. Acompanhe no dashboard — atualiza automaticamente.",
-            } as any)
-            .eq("id", requestId);
-
-          if (updateRequestError) {
-            console.error("[ClientOnboarding] diet_requests update error:", updateRequestError);
-          }
-
           const previousClientData = ((myProfile as any)?.client_data ?? {}) as Record<string, any>;
           const { error: profileError } = await (supabase as any)
             .from("profiles")
@@ -701,8 +702,11 @@ export default function ClientOnboarding() {
           <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
             <Card className="glass-card">
               <CardHeader>
-                <CardTitle className="font-display">Alergias e Restrições Alimentares</CardTitle>
-                <p className="text-sm text-muted-foreground">Selecione todas que se aplicam (opcional)</p>
+                <CardTitle className="font-display">Restrições e preferências</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Separe o que é <strong>obrigatório evitar</strong> (alergias, intolerâncias) do que são{" "}
+                  <strong>preferências de estilo</strong> alimentar.
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {needsCompositionMeta && (
@@ -746,25 +750,57 @@ export default function ClientOnboarding() {
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
-                  {ALLERGY_OPTIONS.map((allergy) => (
-                    <button
-                      type="button"
-                      key={allergy.value}
-                      onClick={() => toggleAllergy(allergy.label)}
-                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
-                        formData.allergies.includes(allergy.label)
-                          ? "border-destructive/60 bg-destructive/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <span className="text-lg">{allergy.emoji}</span>
-                      <span className="font-medium text-sm">{allergy.label}</span>
-                      {formData.allergies.includes(allergy.label) && (
-                        <Check className="h-4 w-4 text-destructive ml-auto" />
-                      )}
-                    </button>
-                  ))}
+                <div>
+                  <p className="text-sm font-semibold text-orange-900 dark:text-orange-100 mb-2">Restrições e alergias</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Intolerâncias, alergias e exclusões que a IA não pode violar.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {RESTRICTION_OPTIONS.map((item) => (
+                      <button
+                        type="button"
+                        key={item.value}
+                        onClick={() => toggleRestriction(item.label)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                          formData.allergies.includes(item.label)
+                            ? "border-orange-500/70 bg-orange-500/10"
+                            : "border-border hover:border-orange-500/40"
+                        }`}
+                      >
+                        <span className="text-lg">{item.emoji}</span>
+                        <span className="font-medium text-sm">{item.label}</span>
+                        {formData.allergies.includes(item.label) && (
+                          <Check className="h-4 w-4 text-orange-600 dark:text-orange-300 ml-auto" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100 mb-2">Preferências alimentares</p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Gostos e estilo (ex.: prefere frango, low carb). Não são regras absolutas como uma alergia.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {FOOD_PREFERENCE_OPTIONS.map((item) => (
+                      <button
+                        type="button"
+                        key={item.value}
+                        onClick={() => toggleFoodPreference(item.label)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${
+                          formData.foodPreferences.includes(item.label)
+                            ? "border-emerald-500/70 bg-emerald-500/10"
+                            : "border-border hover:border-emerald-500/40"
+                        }`}
+                      >
+                        <span className="text-lg">{item.emoji}</span>
+                        <span className="font-medium text-sm">{item.label}</span>
+                        {formData.foodPreferences.includes(item.label) && (
+                          <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-300 ml-auto" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="additionalNotes">Descreva melhor seu foco, rotina ou metas específicas (Opcional)</Label>
