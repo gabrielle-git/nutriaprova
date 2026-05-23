@@ -533,7 +533,8 @@ function PatientDetailPanel({
   const StatusIcon = st.icon;
   const adherence = adherenceFromStoredClient(cd);
   const parsed = parseRequestDraft(request);
-  const meals = parsed.kind === "structured" ? parsed.plan.meals : undefined;
+  const coercedPlan = parsed.kind === "structured" ? coerceAiDraftPlanToDietPlan(parsed.plan as unknown) : null;
+  const meals = coercedPlan?.meals;
   const displayName = patientLabel(cd, request.id);
   const isAcceptingJob = acceptingRequestId === request.id;
   const hasAiDraft = parsed.kind !== "empty";
@@ -623,6 +624,11 @@ function PatientDetailPanel({
             {MEAL_TIMELINE.map((row, i) => {
               const m = meals?.[row.k];
               const color = TIMELINE_DOT[i % TIMELINE_DOT.length];
+              const ingPreview = (m?.ingredients ?? [])
+                .filter((x) => typeof x === "string" && x.trim())
+                .slice(0, 2)
+                .join(" · ");
+              const dishName = m?.name && m.name !== "—" ? m.name : "";
               return (
                 <li key={row.k} className="relative pb-6 last:pb-0">
                   <span
@@ -630,10 +636,14 @@ function PatientDetailPanel({
                     style={{ background: color }}
                   />
                   <p className="text-xs font-medium text-[hsl(var(--ink-1))] font-display">{row.label}</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-[hsl(var(--ink-3))] font-sans">
-                    {m?.name || "—"}
-                    {m?.calories != null ? ` · ${m.calories} kcal` : ""}
-                  </p>
+                  {(ingPreview || dishName) ? (
+                    <p className="mt-0.5 text-[11px] leading-snug text-[hsl(var(--ink-2))] font-sans line-clamp-2">
+                      {ingPreview || dishName}
+                    </p>
+                  ) : null}
+                  {(typeof m?.calories === "number" && m.calories > 0) ? (
+                    <p className="mt-0.5 text-[11px] text-[hsl(var(--ink-3))] font-sans tabular-nums">{m.calories} kcal</p>
+                  ) : null}
                 </li>
               );
             })}
@@ -1287,7 +1297,15 @@ export default function NutritionistDashboard() {
 
     setAdjusting(true);
     try {
-      const newDraft = await adjustDietWithAI(safeForAi.plan, aiInstruction.trim());
+      const raw = await adjustDietWithAI(safeForAi.plan, aiInstruction.trim());
+      let newDraft = coerceAiDraftPlanToDietPlan(raw as unknown);
+      if (
+        (!newDraft.shoppingList || newDraft.shoppingList.length === 0) &&
+        safeForAi.plan.shoppingList &&
+        safeForAi.plan.shoppingList.length > 0
+      ) {
+        newDraft = { ...newDraft, shoppingList: safeForAi.plan.shoppingList };
+      }
       const { error: upErr } = await supabase
         .from("diet_requests")
         .update({ ai_draft: newDraft as unknown as Json })
@@ -1892,8 +1910,11 @@ export default function NutritionistDashboard() {
                             setClinicTab("detail");
                           }}
                           className={cn(
-                            "w-full rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-3 text-left transition-colors",
-                            isSel && "border-l-4 border-l-[hsl(var(--primary))] bg-[hsl(var(--primary))]/4",
+                            "w-full rounded-xl border bg-[hsl(var(--surface-0))] p-3 text-left transition-colors",
+                            "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+                            isSel
+                              ? "border-transparent bg-[hsl(var(--primary))]/8"
+                              : "border-[hsl(var(--surface-3))]",
                           )}
                         >
                           <div className="flex items-start gap-2.5">
@@ -1982,8 +2003,11 @@ export default function NutritionistDashboard() {
                           whileTap={{ scale: 0.98 }}
                           onClick={() => setSelectedRequest(req)}
                           className={cn(
-                            "w-full rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] p-2.5 text-left transition-colors",
-                            isSel && "border-l-4 border-l-[hsl(var(--primary))] bg-[hsl(var(--primary))]/4 shadow-none",
+                            "w-full rounded-xl border bg-[hsl(var(--surface-0))] p-2.5 text-left transition-colors",
+                            "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+                            isSel
+                              ? "border-transparent bg-[hsl(var(--primary))]/8"
+                              : "border-[hsl(var(--surface-3))]",
                           )}
                         >
                           <div className="flex items-start gap-2.5">
@@ -2442,6 +2466,31 @@ export default function NutritionistDashboard() {
                           <InlineEditableMeal key={key} mealKey={key} meal={meal} onChange={handleInlineChange} />
                         );
                       })}
+                      <div className="rounded-xl border border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-0))] overflow-hidden">
+                        <div className="border-b border-[hsl(var(--surface-3))] bg-[hsl(var(--surface-1))] px-4 py-3">
+                          <p className="font-display text-sm font-semibold text-[hsl(var(--ink-1))]">Lista de compras</p>
+                          <p className="mt-1 text-[11px] text-[hsl(var(--ink-3))]">
+                            Um item por linha. Você pode pedir ajustes à IA na seção abaixo (mesmo limite diário do plano).
+                          </p>
+                        </div>
+                        <div className="p-4">
+                          <Textarea
+                            value={(editableDraft.shoppingList ?? []).join("\n")}
+                            onChange={(e) => {
+                              const lines = e.target.value
+                                .split("\n")
+                                .map((l) => l.trim())
+                                .filter(Boolean);
+                              setEditableDraft({
+                                ...editableDraft,
+                                shoppingList: lines.length ? lines : undefined,
+                              });
+                            }}
+                            className="min-h-[120px] resize-y font-sans text-sm"
+                            placeholder={"Ex.: aveia em flocos\nleite desnatado\nfrango grelhado"}
+                          />
+                        </div>
+                      </div>
                       <div className="flex gap-3">
                         <Button variant="outline" className="flex-1" onClick={() => setInlineEditMode(false)}>
                           Cancelar
@@ -2623,7 +2672,7 @@ export default function NutritionistDashboard() {
                           <CardContent className="space-y-3">
                             <p className="text-xs text-muted-foreground">{aiCorrectionHint}</p>
                             <Textarea
-                              placeholder="Ex: Trocar o salmão por tilápia, reduzir carboidratos no jantar..."
+                              placeholder="Ex.: Trocar o salmão por tilápia; reduzir carboidratos no jantar; incluir iogurte grego na lista de compras..."
                               value={aiInstruction}
                               onChange={(e) => setAiInstruction(e.target.value)}
                               disabled={aiAdjustDisabledByPlan}

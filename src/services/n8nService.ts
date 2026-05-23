@@ -52,6 +52,28 @@ export function formatGeminiDietRestrictionAndPreferenceBlock(clientData: Client
   );
 }
 
+/** Uma refeição alternativa de troca (mesmos macros aproximados). */
+export interface MealAlternative {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  ingredients: string[];
+  instructions: string;
+  prepTime?: string;
+}
+
+/** Substituição de ingrediente dentro de uma refeição. */
+export interface MealSubstitution {
+  /** Ingrediente original, ex: "Frango grelhado 150g" */
+  original: string;
+  /** Lista de alternativas, ex: ["Atum em lata 130g", "Tofu grelhado 150g"] */
+  alternatives: string[];
+  /** Nota de ajuste, ex: "Mantenha a mesma quantidade em gramas" */
+  note?: string;
+}
+
 export interface Meal {
   name: string;
   calories: number;
@@ -62,9 +84,34 @@ export interface Meal {
   instructions: string;
   prepTime?: string;
   tips?: string;
+  /**
+   * Nota clínica contextual — ex: "Rico em ferro não-heme: consuma com
+   * vitamina C para melhor absorção". Diferente de `tips` (dica de preparo),
+   * é informação nutricional/fisiológica relevante para o paciente.
+   */
+  clinicalNote?: string;
+  /**
+   * Contexto de treino quando relevante — ex: "Pré-treino", "Pós-treino".
+   * Null/undefined se a refeição não tem relação com janela de treino.
+   */
+  timing?: string | null;
+  /**
+   * 1 ou 2 opções alternativas com macros equivalentes.
+   * O paciente pode escolher qualquer uma sem sair da meta.
+   */
+  alternatives?: MealAlternative[];
+  /**
+   * Substituições de ingredientes específicos dentro desta refeição.
+   * Útil para pacientes com restrições pontuais que não invalidam o plano.
+   */
+  substitutions?: MealSubstitution[];
 }
 
-export interface DietPlan {
+/** Um dia completo do plano (usado no plano de 3 dias). */
+export interface DayPlan {
+  /** Rótulo do dia, ex: "Segunda-feira" */
+  dayLabel: string;
+  /** Total calórico deste dia específico */
   totalCalories: number;
   meals: {
     cafeDaManha: Meal;
@@ -73,8 +120,31 @@ export interface DietPlan {
     lancheDaTarde: Meal;
     jantar: Meal;
   };
+}
+
+export interface DietPlan {
+  totalCalories: number;
+  targetCalories?: number;
+  targetProtein?: number;
+  targetCarbs?: number;
+  targetFat?: number;
+  /** Refeições do Dia 1 / Dia base (mantido para compatibilidade com planos antigos). */
+  meals: {
+    cafeDaManha: Meal;
+    lancheDaManha: Meal;
+    almoco: Meal;
+    lancheDaTarde: Meal;
+    jantar: Meal;
+  };
+  /**
+   * Variações de 3 dias (Segunda, Quarta, Sexta).
+   * Se presente, a UI exibe abas por dia. Se ausente, exibe só `meals` (plano legado).
+   */
+  days?: DayPlan[];
   notes: string;
   generatedAt: string;
+  /** Lista agregada enviada pela IA (`lista_de_compras` / `shoppingList`); opcional. */
+  shoppingList?: string[];
 }
 
 async function logN8nError(label: string, error: unknown, data: unknown) {

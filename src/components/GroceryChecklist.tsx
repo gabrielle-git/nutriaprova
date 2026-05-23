@@ -21,9 +21,13 @@ export default function GroceryChecklist({ dietPlan }: Props) {
     return <GroceryUnavailable />;
   }
 
-  const allIngredients = Object.values(dietPlan.meals)
-    .flatMap((m) => m.ingredients)
-    .filter((v, i, a) => a.indexOf(v) === i);
+  const explicit = dietPlan.shoppingList?.map((s) => s.trim()).filter(Boolean) ?? [];
+  const allIngredients =
+    explicit.length > 0
+      ? explicit
+      : Object.values(dietPlan.meals)
+          .flatMap((m) => m.ingredients)
+          .filter((v, i, a) => a.indexOf(v) === i);
 
   const [checked, setChecked] = useState<Set<string>>(new Set());
 

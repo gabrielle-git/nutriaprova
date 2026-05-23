@@ -188,11 +188,12 @@ function pickStr(v: unknown): string | null {
   return null;
 }
 
-/** Extrai número de valores numéricos ou strings (“200 kcal”, “25,5g”). */
+/** Extrai número de valores numéricos ou strings (“200 kcal”, “25,5g”, “~15g”). */
 function safeNutriNumber(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim()) {
-    const m = v.match(/-?\d+(?:[.,]\d+)?/);
+    const t = v.trim().replace(/\u00a0/g, " ");
+    const m = t.match(/-?\d+(?:[.,]\d+)?/);
     if (!m) return 0;
     const n = Number(m[0].replace(",", "."));
     return Number.isFinite(n) ? n : 0;
@@ -212,6 +213,15 @@ const MACRO_WRAPPER_KEYS = [
   "totaisNutricionais",
   "analiseNutricional",
   "perfilNutricional",
+  "informacaoNutricional",
+  "informaçõesNutricionais",
+  "informacoesNutricionais",
+  "informacoes_nutricionais",
+  "dadosNutricionais",
+  "resumoNutricional",
+  "detalhes",
+  "nutri",
+  "valores",
 ] as const;
 
 function readNumericByAliases(rec: Record<string, unknown>, aliases: readonly string[], depth = 0): number | undefined {
@@ -231,6 +241,32 @@ function readNumericByAliases(rec: Record<string, unknown>, aliases: readonly st
     }
   }
   return undefined;
+}
+
+/** Prioriza o primeiro valor &gt; 0 entre alias PT/EN (evita ficar preso em `calories: 0` quando `calorias` tem o valor). */
+function readMacroFieldPositive(rec: Record<string, unknown>, aliases: readonly string[], depth = 0): number | undefined {
+  if (depth > 8) return undefined;
+  for (const alias of aliases) {
+    const v = getFlexible(rec, alias);
+    if (v === undefined || v === null || v === "") continue;
+    const n = safeNutriNumber(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  for (const w of MACRO_WRAPPER_KEYS) {
+    const inner = getFlexible(rec, w);
+    if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+      const got = readMacroFieldPositive(inner as Record<string, unknown>, aliases, depth + 1);
+      if (got !== undefined) return got;
+    }
+  }
+  return undefined;
+}
+
+function readMacroField(rec: Record<string, unknown>, aliases: readonly string[], depth = 0): number {
+  const pos = readMacroFieldPositive(rec, aliases, depth);
+  if (pos !== undefined) return pos;
+  const fallback = readNumericByAliases(rec, aliases, depth);
+  return fallback ?? 0;
 }
 
 function emptyMeal(): Meal {
@@ -269,10 +305,73 @@ function pickInstructionsMerged(o: Record<string, unknown>): string {
   return "";
 }
 
-const CAL_ALIAS = ["calories", "calorias", "caloria", "kcal", "energia", "valorEnergetico", "valor_energetico", "valorEnergético"];
-const PROT_ALIAS = ["protein", "proteinas", "proteínas", "proteina", "prot"];
-const CARB_ALIAS = ["carbs", "carboidratos", "carboidrato", "carbohydrate"];
-const FAT_ALIAS = ["fat", "gorduras", "gordura", "fats", "lipidios", "lípidios"];
+const CAL_ALIAS = [
+  "calories",
+  "calorias",
+  "caloria",
+  "kcal",
+  "energia",
+  "valorEnergetico",
+  "valor_energetico",
+  "valorEnergético",
+  "cal",
+];
+const PROT_ALIAS = [
+  "protein",
+  "proteinas",
+  "proteínas",
+  "proteina",
+  "proteína",
+  "prot",
+  "proteins",
+];
+const CARB_ALIAS = [
+  "carbs",
+  "carboidratos",
+  "carboidrato",
+  "carbohydrate",
+  "carbohidratos",
+  "carb",
+  "carboidratoTotal",
+];
+const FAT_ALIAS = ["fat", "gorduras", "gordura", "fats", "lipidios", "lipídios", "lípidios", "lipideos", "lipídeos"];
+
+const PLAN_TOTAL_CAL_ALIASES = [
+  "totalCalories",
+  "total_calories",
+  "caloriasTotais",
+  "calorias_totais",
+  "caloriaTotal",
+  "caloria_total",
+  "caloriasDiarias",
+  "calorias_diarias",
+  "kcalTotal",
+  "kcal_total",
+  "totalKcal",
+  "total_kcal",
+  "metaCaloricaDiaria",
+  "kcal_dia",
+  "caloriasPorDia",
+  "calorias",
+  "budgetCalorico",
+] as const;
+
+/** Metas no objeto raiz do plano (não usar para `totalCalories` — ver {@link PLAN_TOTAL_CAL_ALIASES}). */
+const PLAN_META_CAL_ALIASES = ["meta_calorias", "metaCalorias", "targetCalories"] as const;
+const PLAN_META_PROT_ALIASES = ["meta_proteinas", "metaProteinas", "targetProtein"] as const;
+const PLAN_META_CARB_ALIASES = ["meta_carboidratos", "metaCarboidratos", "targetCarbs"] as const;
+const PLAN_META_FAT_ALIASES = ["meta_gorduras", "metaGorduras", "targetFat"] as const;
+
+function readPlanRootMetaTarget(base: Record<string, unknown>, aliases: readonly string[]): number {
+  for (const alias of aliases) {
+    const v = getFlexible(base, alias);
+    if (v !== undefined && v !== null && v !== "") {
+      const n = safeNutriNumber(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return 0;
+}
 
 function mealFromLooseObject(m: unknown): Meal {
   if (m == null || typeof m !== "object" || Array.isArray(m)) return emptyMeal();
@@ -294,10 +393,10 @@ function mealFromLooseObject(m: unknown): Meal {
 
   const instructions = pickInstructionsMerged(o);
 
-  const calories = readNumericByAliases(o, CAL_ALIAS) ?? 0;
-  const protein = readNumericByAliases(o, PROT_ALIAS) ?? 0;
-  const carbs = readNumericByAliases(o, CARB_ALIAS) ?? 0;
-  const fat = readNumericByAliases(o, FAT_ALIAS) ?? 0;
+  const calories = readMacroField(o, CAL_ALIAS);
+  const protein = readMacroField(o, PROT_ALIAS);
+  const carbs = readMacroField(o, CARB_ALIAS);
+  const fat = readMacroField(o, FAT_ALIAS);
 
   const pt = pickStr(getFlexible(o, "prepTime")) ?? pickStr(getFlexible(o, "tempo_preparo")) ?? pickStr(getFlexible(o, "tempoPreparo"));
   const tips =
@@ -382,6 +481,48 @@ function filledSlotsFromPlanRoot(base: Record<string, unknown>): Partial<Record<
   return out;
 }
 
+const SHOPPING_LIST_KEYS = [
+  "shoppingList",
+  "shopping_list",
+  "lista_de_compras",
+  "listaDeCompras",
+  "listaCompras",
+  "lista_compras",
+  "compras",
+  "groceryList",
+  "grocery_list",
+] as const;
+
+/** Normaliza lista de compras da IA (array, string multilinha ou objetos `{ item, nome }`). */
+function normalizeShoppingListFromDraft(base: Record<string, unknown>): string[] | undefined {
+  for (const key of SHOPPING_LIST_KEYS) {
+    const raw = getFlexible(base, key);
+    if (raw == null) continue;
+    if (Array.isArray(raw)) {
+      const list = normalizeIngredientArray(raw);
+      if (list.length) return list;
+      continue;
+    }
+    if (typeof raw === "string" && raw.trim()) {
+      const list = raw
+        .split(/[\n;]+/)
+        .map((s) => s.replace(/^[-•*]\s*/, "").trim())
+        .filter(Boolean);
+      if (list.length) return list;
+    }
+  }
+  return undefined;
+}
+
+function resolveTotalCalories(base: Record<string, unknown>, meals: DietPlan["meals"]): number {
+  const sumMeals = MEAL_KEY_ORDER.reduce((acc, k) => acc + meals[k].calories, 0);
+  const explicitPos = readMacroFieldPositive(base, PLAN_TOTAL_CAL_ALIASES);
+  if (explicitPos !== undefined) return explicitPos;
+  if (sumMeals > 0) return sumMeals;
+  const explicitAny = readNumericByAliases(base, PLAN_TOTAL_CAL_ALIASES);
+  return explicitAny ?? 0;
+}
+
 /**
  * Converte rascunho da IA em {@link DietPlan} canônico: aceita chaves PT-BR/aninhamentos comuns do n8n.
  */
@@ -398,20 +539,7 @@ export function coerceAiDraftPlanToDietPlan(raw: unknown): DietPlan {
     jantar: mealFromLooseObject(bySlot.jantar),
   };
 
-  const totalExplicit =
-    readNumericByAliases(base, [
-      "totalCalories",
-      "total_calories",
-      "caloriasTotais",
-      "calorias_totais",
-      "caloriaTotal",
-      "caloria_total",
-      "metaCalorias",
-    ]) ??
-    undefined;
-  const totalCalories =
-    totalExplicit ??
-    MEAL_KEY_ORDER.reduce((acc, k) => acc + meals[k].calories, 0);
+  const totalCalories = resolveTotalCalories(base, meals);
 
   const notes =
     pickStr(getFlexible(base, "notes")) ??
@@ -425,12 +553,25 @@ export function coerceAiDraftPlanToDietPlan(raw: unknown): DietPlan {
     pickStr(getFlexible(base, "gerado_em")) ??
     new Date().toISOString();
 
-  return {
+  const shoppingList = normalizeShoppingListFromDraft(base);
+
+  const targetCalories = readPlanRootMetaTarget(base, PLAN_META_CAL_ALIASES);
+  const targetProtein = readPlanRootMetaTarget(base, PLAN_META_PROT_ALIASES);
+  const targetCarbs = readPlanRootMetaTarget(base, PLAN_META_CARB_ALIASES);
+  const targetFat = readPlanRootMetaTarget(base, PLAN_META_FAT_ALIASES);
+
+  const out: DietPlan = {
     totalCalories,
     meals,
     notes,
     generatedAt,
+    targetCalories,
+    targetProtein,
+    targetCarbs,
+    targetFat,
   };
+  if (shoppingList?.length) out.shoppingList = shoppingList;
+  return out;
 }
 
 function markdownFromNonStructuredObject(o: Record<string, unknown>): string | null {

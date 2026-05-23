@@ -35,6 +35,10 @@ export interface DietPlan {
   };
   notes: string;
   generatedAt: string;
+  targetCalories?: number;
+  targetProtein?: number;
+  targetCarbs?: number;
+  targetFat?: number;
 }
 
 /**
