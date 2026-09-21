@@ -1,0 +1,439 @@
+{
+  "createdAt": "2026-09-21T19:25:30.403Z",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "fixtureRuntime": "/home/Gabandro/nutriaprova-security-1c-local/runtime/fixtures.json",
+  "canonicalMatrix": true,
+  "vuln1c001": {
+    "id": "VULN-1C-001",
+    "title": "Infinite recursion in profiles RLS (42P17)",
+    "classification": "VULNERABILIDADE CONFIRMADA",
+    "evidence": "Authenticated REST/SQL touching policies that subquery public.profiles.role returns HTTP 500 / 42P17"
+  },
+  "cases": [
+    {
+      "id": "SEC-001",
+      "identity": "C1",
+      "operation": "SELECT diet_requests R1 (pool público de C2)",
+      "payload": {
+        "id": "81162f87-882b-4dd0-8970-78848bb39a4b"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar SELECT de client_data/pedido alheio no pool (ou restringir campos)",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-002",
+      "identity": "P1",
+      "operation": "SELECT diet_requests R1 (mesma request do pool)",
+      "payload": {
+        "id": "81162f87-882b-4dd0-8970-78848bb39a4b"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar SELECT de pedido clínico a personal_trainer (fora do papel nutri)",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-003",
+      "identity": "C1",
+      "operation": "UPDATE/claim diet_requests R1",
+      "payload": {
+        "id": "81162f87-882b-4dd0-8970-78848bb39a4b",
+        "nutritionist_id": "C1",
+        "status": "in_review"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar claim de pool a client",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-004",
+      "identity": "P1",
+      "operation": "UPDATE/claim diet_requests R1",
+      "payload": {
+        "id": "81162f87-882b-4dd0-8970-78848bb39a4b",
+        "nutritionist_id": "P1",
+        "status": "in_review"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar claim de pool a personal_trainer",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-005",
+      "identity": "C1",
+      "operation": "UPDATE profiles.role → admin",
+      "payload": {
+        "user_id": "C1",
+        "role": "admin"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar self-update de role",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-006",
+      "identity": "C1",
+      "operation": "UPDATE profiles.credits → 9999",
+      "payload": {
+        "user_id": "C1",
+        "credits": 9999
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar self-update de credits",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-007",
+      "identity": "C1",
+      "operation": "UPDATE profiles.plan_tier → premium",
+      "payload": {
+        "user_id": "C1",
+        "plan_tier": "premium"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar self-update de plan_tier",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-008",
+      "identity": "C1",
+      "operation": "INSERT arbitrário em transactions",
+      "payload": {
+        "user_id": "C1",
+        "amount": 99999,
+        "type": "credit_purchase"
+      },
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "baselineBehavior": "Operação interrompida por recursão profiles",
+      "expectedAfterHardening": "Negar self-insert de transactions (somente service/admin/checkout confiável)",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": false,
+      "classification": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "SEC-009",
+      "identity": "anon",
+      "operation": "INSERT fraudulento sale+amount em invite_analytics",
+      "payload": {
+        "event_type": "sale",
+        "amount": 999.99,
+        "note": "executado sem .select(); variante com .select() documentada em investigation"
+      },
+      "httpOrSql": {
+        "insertWithoutSelect": {
+          "status": 201,
+          "error": null
+        },
+        "insertWithSelect_artifact": {
+          "status": 401,
+          "error": {
+            "message": "new row violates row-level security policy for table \"invite_analytics\"",
+            "code": "42501",
+            "details": null,
+            "hint": null,
+            "status": null
+          },
+          "note": "42501 causado por RETURNING sem policy SELECT para anon — não é ausência de GRANT INSERT"
+        },
+        "rawPreferMinimal": {
+          "httpStatus": 201,
+          "body": ""
+        }
+      },
+      "rowsAffectedOrReturned": 1,
+      "baselineBehavior": "Anon inseriu sale+amount (fraude analytics)",
+      "expectedAfterHardening": "Negar event_type=sale / amount>0 para anon; restringir INSERT analytics",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": true,
+      "investigation42501": {
+        "grantInsertAnon": true,
+        "insertPolicyExists": true,
+        "insertPolicyWithCheck": "true",
+        "insertPolicyRoles": [
+          "anon",
+          "authenticated"
+        ],
+        "selectPolicyForAnon": false,
+        "exactCause": "INSERT em si é permitido (GRANT + policy insert_any). O 42501 aparece quando o cliente pede RETURNING/representation (.select()), porque anon não tem policy SELECT em invite_analytics — o Postgres rejeita a visibilidade da linha nova e reporta violação RLS (mensagem parece de INSERT).",
+        "category": "policy existente mas não aplicável ao SELECT/RETURNING; não é ausência de GRANT INSERT nem ausência da policy de INSERT"
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA"
+    },
+    {
+      "id": "SEC-010",
+      "identity": "C1",
+      "operation": "INSERT fraudulento sale+amount em invite_analytics",
+      "payload": {
+        "event_type": "sale",
+        "amount": 888.88,
+        "owner_id": "N2"
+      },
+      "httpOrSql": {
+        "status": 201,
+        "error": null
+      },
+      "rowsAffectedOrReturned": 1,
+      "baselineBehavior": "C1 inseriu sale+amount fraudulento",
+      "expectedAfterHardening": "Negar sale/amount fraudulento a client autenticado",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": true,
+      "classification": "VULNERABILIDADE CONFIRMADA"
+    },
+    {
+      "id": "SEC-011",
+      "identity": "C1",
+      "operation": "INSERT client_feedback apontando para request de C2 (R2)",
+      "payload": {
+        "diet_request_id": "R2",
+        "client_id": "C1",
+        "rating": 5
+      },
+      "httpOrSql": {
+        "status": 201,
+        "error": null
+      },
+      "rowsAffectedOrReturned": 1,
+      "baselineBehavior": "C1 criou feedback em pedido de C2",
+      "expectedAfterHardening": "Exigir diet_requests.client_id = auth.uid() para o request referenciado",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": true,
+      "classification": "VULNERABILIDADE CONFIRMADA"
+    }
+  ],
+  "controls": [
+    {
+      "id": "CTRL-POS-01",
+      "type": "positive",
+      "identity": "C2",
+      "operation": "SELECT own R1+R2",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "CTRL-POS-02",
+      "type": "positive",
+      "identity": "N2",
+      "operation": "SELECT R2",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "CTRL-POS-03",
+      "type": "positive",
+      "identity": "N2",
+      "operation": "UPDATE R2 notes",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "CTRL-POS-04",
+      "type": "positive",
+      "identity": "A1",
+      "operation": "SELECT R1+R2",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "CTRL-NEG-01",
+      "type": "negative",
+      "identity": "C1",
+      "operation": "SELECT profile C2",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    },
+    {
+      "id": "CTRL-NEG-02",
+      "type": "negative",
+      "identity": "N1",
+      "operation": "SELECT R2 (owned by N2)",
+      "httpOrSql": {
+        "status": 500,
+        "error": {
+          "message": "infinite recursion detected in policy for relation \"profiles\"",
+          "code": "42P17",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "rowsAffectedOrReturned": 0,
+      "ok": false,
+      "note": "BLOQUEADO POR VULN-1C-001 / 42P17"
+    }
+  ],
+  "summary": {
+    "blockedBy42P17": [
+      "SEC-001",
+      "SEC-002",
+      "SEC-003",
+      "SEC-004",
+      "SEC-005",
+      "SEC-006",
+      "SEC-007",
+      "SEC-008"
+    ],
+    "confirmed": [
+      "SEC-009",
+      "SEC-010",
+      "SEC-011"
+    ],
+    "blockedClean": [],
+    "unconfirmed": []
+  }
+}

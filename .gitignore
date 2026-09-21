@@ -31,3 +31,6 @@ docker-data/
 *.sln
 *.sw?
 *.env
+
+# Security 1C audit runtime (IDs/sessions — never commit)
+security/1c/runtime/
