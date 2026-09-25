@@ -25,8 +25,8 @@ import {
 import { cn } from "@/lib/utils";
 import PlanCheckoutModal, { type CheckoutPlanSelection } from "@/components/PlanCheckoutModal";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { downgradeOwnPlanToFreemium } from "@/services/profileEconomicService";
 
 interface PlansModalProps {
   open: boolean;
@@ -174,20 +174,7 @@ export default function PlansModal({ open, onOpenChange, currentTier = "freemium
 
     setDowngrading(true);
     try {
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ plan_tier: "freemium" })
-        .eq("user_id", user.id);
-      if (profileErr) throw profileErr;
-
-      const { error: txErr } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        amount: 0,
-        type: "plan_downgrade",
-        description: "Downgrade para Freemium solicitado pelo usuário",
-      });
-      if (txErr) throw txErr;
-
+      await downgradeOwnPlanToFreemium();
       await refreshProfile();
       toast.success("Plano alterado para Freemium.");
     } catch (err: unknown) {

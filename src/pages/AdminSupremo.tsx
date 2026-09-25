@@ -35,6 +35,7 @@ import { Radar } from "lucide-react";
 import type { DietPlan } from "@/services/n8nService";
 import { blogAuthorBylineFromProfile } from "@/lib/utils";
 import { adminSetProfessionalApproval } from "@/services/profileSecurityService";
+import { adminAdjustCredits } from "@/services/profileEconomicService";
 import {
   AreaChart,
   Area,
@@ -262,16 +263,20 @@ export default function AdminSupremo() {
     const amount = parseInt(creditAmount[p.id] || "0");
     const action = creditAction[p.id] || "add";
     if (!amount || amount <= 0) { toast.error("Informe um valor válido"); return; }
-    
-    const newCredits = action === "add" ? p.credits + amount : Math.max(0, p.credits - amount);
-    await supabase.from("profiles").update({ credits: newCredits }).eq("id", p.id);
-    await supabase.from("transactions").insert({
-      user_id: p.user_id, amount: action === "add" ? amount : -amount, type: "credit_purchase" as const,
-      description: `Admin Supreme ${action === "add" ? "adicionou" : "removeu"} ${amount} moedas`,
-    });
-    toast.success(`${amount} moedas ${action === "add" ? "adicionadas" : "removidas"} para ${p.full_name}`);
-    setCreditAmount({ ...creditAmount, [p.id]: "" });
-    fetchData();
+
+    const delta = action === "add" ? amount : -amount;
+    try {
+      await adminAdjustCredits(
+        p.user_id,
+        delta,
+        `Admin Supreme ${action === "add" ? "adicionou" : "removeu"} ${amount} moedas`,
+      );
+      toast.success(`${amount} moedas ${action === "add" ? "adicionadas" : "removidas"} para ${p.full_name}`);
+      setCreditAmount({ ...creditAmount, [p.id]: "" });
+      fetchData();
+    } catch {
+      toast.error("Erro ao ajustar créditos");
+    }
   };
 
   const handleCrnVerify = (profileId: string) => {

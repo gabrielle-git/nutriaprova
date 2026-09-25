@@ -5,6 +5,7 @@ import { AlertCircle, Loader2, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { activatePlanWithInternalBalance } from "@/services/profileEconomicService";
 
 export interface CheckoutPlanSelection {
   name: string;
@@ -17,18 +18,8 @@ interface PlanCheckoutModalProps {
   onOpenChange: (open: boolean) => void;
   plan: CheckoutPlanSelection | null;
   onApproved?: () => void | Promise<void>;
-}
-
-/** Moedas inclusas no plano ao ativar (nunca reduz o saldo existente — só garante o mínimo do tier). */
-const PLAN_CREDIT_GRANT: Record<string, number> = {
-  freemium: 5,
-  basic: 20,
-  premium: 120,
-  clinic: 9999,
-};
-
-function txIntegerBrl(reais: number): number {
-  return Math.round(Number(reais) || 0);
+  /** monthly | annual — preço calculado no servidor a partir do tier */
+  billingPeriod?: "monthly" | "annual";
 }
 
 function formatBrl(value: number) {
@@ -41,13 +32,13 @@ function checkoutErrText(err: unknown) {
   return String(err);
 }
 
-function wait(ms: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved }: PlanCheckoutModalProps) {
+export default function PlanCheckoutModal({
+  open,
+  onOpenChange,
+  plan,
+  onApproved,
+  billingPeriod = "monthly",
+}: PlanCheckoutModalProps) {
   const { user, profile, refreshProfile } = useAuth();
   const [processing, setProcessing] = useState(false);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -64,8 +55,6 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
     const loadInternalBalance = async () => {
       setLoadingBalance(true);
       try {
-        // Saldo interno equivalente: ganhos concluídos (R$ 15 por validação)
-        // menos o que já foi usado em upgrades com saldo.
         const { count, error: completedErr } = await supabase
           .from("diet_requests")
           .select("id", { count: "exact", head: true })
@@ -99,82 +88,35 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
     void loadInternalBalance();
   }, [open, user, plan]);
 
-  const finishUpgrade = async (internalUsed: number, externalPaid: number) => {
+  const activateWithTrustedBalance = async () => {
     if (!plan) return;
     if (!user) {
       toast.error("Faça login para concluir o upgrade do plano.");
       return;
     }
 
+    const tierKey = String(plan.tier).toLowerCase();
+    if (tierKey !== "basic" && tierKey !== "premium" && tierKey !== "clinic") {
+      toast.error("Plano inválido.");
+      return;
+    }
+
     setProcessing(true);
     try {
-      await wait(2000);
+      const result = await activatePlanWithInternalBalance(tierKey, billingPeriod);
 
-      const tierKey = String(plan.tier).toLowerCase();
-      const targetCredits = PLAN_CREDIT_GRANT[tierKey] ?? 0;
-      const currentCredits = profile?.credits ?? 0;
-      /** Preserva moedas acima do pacote do tier (ex.: Basic não “zera” para 20 se o nutri já tem mais). */
-      const nextCredits = Math.max(currentCredits, targetCredits);
-
-      const profilePayload: Record<string, unknown> = { plan_tier: tierKey };
-      if (nextCredits !== currentCredits) {
-        profilePayload.credits = nextCredits;
+      if (!result || result.status === "payment_required") {
+        toast.error(
+          "Saldo interno insuficiente para ativar este plano. Integração de pagamento em configuração — contate o suporte.",
+        );
+        return;
       }
 
-      try {
-        const { error: profileErr } = await supabase
-          .from("profiles")
-          .update(profilePayload)
-          .eq("user_id", user.id);
-        if (profileErr) throw profileErr;
-
-        const txRows: Array<{ user_id: string; amount: number; type: string; description: string }> = [];
-        const intInternal = txIntegerBrl(internalUsed);
-        const intExternal = txIntegerBrl(externalPaid);
-        if (intInternal > 0) {
-          txRows.push({
-            user_id: user.id,
-            amount: -intInternal,
-            type: "plan_upgrade_balance_debit",
-            description: `Upgrade para ${plan.name} usando saldo interno`,
-          });
-        }
-        if (intExternal > 0) {
-          txRows.push({
-            user_id: user.id,
-            amount: -intExternal,
-            type: "plan_upgrade_external_payment",
-            description: `Upgrade de plano — aguarda confirmação de pagamento`,
-          });
-        }
-        if (txRows.length > 0) {
-          const { error: txErr } = await supabase.from("transactions").insert(txRows);
-          if (txErr) throw txErr;
-        }
-
-        const creditDelta = nextCredits - currentCredits;
-        if (creditDelta > 0) {
-          const { error: grantErr } = await supabase.from("transactions").insert({
-            user_id: user.id,
-            amount: creditDelta,
-            type: "plan_coin_grant",
-            description: `Ajuste de moedas no upgrade para ${plan.name}`,
-          });
-          if (grantErr) throw grantErr;
-        }
-
-        await refreshProfile();
-      } catch (error: unknown) {
-        console.error("ERRO_CHECKOUT:", checkoutErrText(error) || error);
-        throw error;
-      }
-
+      await refreshProfile();
       await onApproved?.();
-
       toast.success(
         "Upgrade ativado com sucesso! Com suas moedas, você pode lucrar de R$ 300,00 a R$ 500,00 validando dietas.",
       );
-
       onOpenChange(false);
     } catch (err: unknown) {
       console.error("ERRO_CHECKOUT:", checkoutErrText(err) || err);
@@ -184,21 +126,19 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
     }
   };
 
-  const handleConfirmExternalPayment = async () => {
-    await finishUpgrade(0, planAmount);
-  };
-
   const handleConfirmWithBalance = async () => {
     if (!plan) return;
     if (!user) {
       toast.error("Faça login para concluir o upgrade do plano.");
       return;
     }
-    if (balanceToUse <= 0) {
-      toast.error("Você ainda não possui saldo acumulado para usar no upgrade.");
+    if (!hasEnoughBalance) {
+      toast.error(
+        "Saldo parcial não ativa o plano sem comprovação de pagamento. Integração de pagamento em configuração.",
+      );
       return;
     }
-    await finishUpgrade(balanceToUse, remainingToPay);
+    await activateWithTrustedBalance();
   };
 
   return (
@@ -231,7 +171,7 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
                   <p className="text-xs text-[hsl(var(--ink-2))]">
                     {hasEnoughBalance
                       ? "Seu saldo cobre 100% deste plano."
-                      : `Aplicaremos ${formatBrl(balanceToUse)} e você paga só ${formatBrl(remainingToPay)} de diferença.`}
+                      : `Saldo parcial (${formatBrl(balanceToUse)}) não ativa o plano sem pagamento comprovado. Falta ${formatBrl(remainingToPay)}.`}
                   </p>
                 )}
               </div>
@@ -241,7 +181,7 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
               variant="outline"
               className="mt-4 w-full border-primary/40 bg-background"
               onClick={handleConfirmWithBalance}
-              disabled={processing || loadingBalance || balanceToUse <= 0}
+              disabled={processing || loadingBalance || !hasEnoughBalance}
             >
               {processing ? (
                 <>
@@ -251,7 +191,7 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
               ) : hasEnoughBalance ? (
                 "Pagar com meu saldo disponível"
               ) : (
-                `Usar saldo + pagar ${formatBrl(remainingToPay)}`
+                `Saldo insuficiente (faltam ${formatBrl(remainingToPay)})`
               )}
             </Button>
           </div>
@@ -268,27 +208,22 @@ export default function PlanCheckoutModal({ open, onOpenChange, plan, onApproved
 
         {import.meta.env.DEV && (
           <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-            <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">[MODO DESENVOLVIMENTO] Simulação ativa</p>
+            <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">[MODO DESENVOLVIMENTO]</p>
             <p className="text-xs font-mono text-amber-800/90 dark:text-amber-300/90">
-              Pagamento externo simulado (não aparece em produção)
+              Simulação de pagamento externo desabilitada (1E.1B): não existe API de produção que ative plano sem funding confiável.
             </p>
             <Button
               type="button"
               className="h-12 w-full emerald-gradient text-base font-semibold text-primary-foreground"
-              onClick={handleConfirmExternalPayment}
+              onClick={() =>
+                toast.info(
+                  "Simulação DEV bloqueada pelo hardening econômico. Use saldo interno integral ou aguarde o gateway.",
+                )
+              }
               disabled={!plan || processing}
             >
-              {processing ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                <>
-                  <Zap className="mr-2 h-4 w-4" />
-                  Simular pagamento externo (dev only)
-                </>
-              )}
+              <Zap className="mr-2 h-4 w-4" />
+              Simular pagamento externo (bloqueado)
             </Button>
           </div>
         )}

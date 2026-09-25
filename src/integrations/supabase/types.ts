@@ -334,6 +334,34 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      request_own_role_transition: {
+        Args: { target_role: string; p_crn_number?: string | null }
+        Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      admin_set_professional_approval: {
+        Args: { target_user_id: string; p_approved: boolean }
+        Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      ensure_trial_credits: {
+        Args: Record<PropertyKey, never>
+        Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      consume_job_credit: {
+        Args: { request_id: string }
+        Returns: Json
+      }
+      admin_adjust_credits: {
+        Args: { target_user_id: string; delta: number; reason: string }
+        Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      downgrade_own_plan_to_freemium: {
+        Args: Record<PropertyKey, never>
+        Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      activate_plan_with_internal_balance: {
+        Args: { target_tier: string; billing_period?: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

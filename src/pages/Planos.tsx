@@ -29,7 +29,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/ui/button";
 import PlanCheckoutModal, { type CheckoutPlanSelection } from "@/components/PlanCheckoutModal";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { downgradeOwnPlanToFreemium } from "@/services/profileEconomicService";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -318,20 +318,7 @@ export default function PlanosLanding() {
 
     setCancelling(true);
     try {
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ plan_tier: "freemium" })
-        .eq("user_id", user.id);
-      if (profileErr) throw profileErr;
-
-      const { error: txErr } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        amount: 0,
-        type: "plan_downgrade",
-        description: "Cancelamento de assinatura e retorno para Freemium",
-      });
-      if (txErr) throw txErr;
-
+      await downgradeOwnPlanToFreemium();
       await refreshProfile();
       toast.success(
         "Plano alterado para Freemium. Faça upgrade ou compre moedas para continuar validando e acessando recursos premium.",
@@ -844,6 +831,7 @@ export default function PlanosLanding() {
         open={checkoutOpen}
         onOpenChange={setCheckoutOpen}
         plan={checkoutPlan}
+        billingPeriod={annual ? "annual" : "monthly"}
       />
     </div>
   );

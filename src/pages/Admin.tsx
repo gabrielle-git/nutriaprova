@@ -15,6 +15,7 @@ import AdminSimulationView from "@/components/AdminSimulationView";
 import RetentionBotPreview from "@/components/RetentionBotPreview";
 import { fetchInvitePerformance, type ProfessionalPerformance } from "@/services/inviteAnalytics";
 import { adminSetProfessionalApproval } from "@/services/profileSecurityService";
+import { adminAdjustCredits } from "@/services/profileEconomicService";
 
 type Profile = any;
 type Transaction = any;
@@ -90,20 +91,18 @@ export default function Admin() {
   const addCredits = async (p: Profile) => {
     const amount = parseInt(creditAmount[p.id] || "0");
     if (!amount || amount <= 0) { toast.error("Informe um valor válido"); return; }
-    const { error } = await supabase
-      .from("profiles")
-      .update({ credits: p.credits + amount })
-      .eq("id", p.id);
-    if (error) { toast.error("Erro ao adicionar créditos"); return; }
-    await supabase.from("transactions").insert({
-      user_id: p.user_id,
-      amount,
-      type: "credit_purchase" as const,
-      description: `Admin adicionou ${amount} moedas manualmente`,
-    });
-    toast.success(`${amount} moedas adicionadas para ${p.full_name}`);
-    setCreditAmount({ ...creditAmount, [p.id]: "" });
-    fetchData();
+    try {
+      await adminAdjustCredits(
+        p.user_id,
+        amount,
+        `Admin adicionou ${amount} moedas manualmente`,
+      );
+      toast.success(`${amount} moedas adicionadas para ${p.full_name}`);
+      setCreditAmount({ ...creditAmount, [p.id]: "" });
+      fetchData();
+    } catch {
+      toast.error("Erro ao adicionar créditos");
+    }
   };
 
   const getHoursPending = (createdAt: string) =>

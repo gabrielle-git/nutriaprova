@@ -952,22 +952,15 @@ export default function NutritionistDashboard() {
     void fetchRequests();
     void fetchCompletedRequests();
 
-    // Freemium safety net: ensure new nutritionists start with at least 2 trial credits
+    // Freemium safety net: ensure new nutritionists start with trial credits (server-side)
     (async () => {
       if (profile && profile.role === "nutritionist" && profile.credits === 0) {
-        // Only auto-grant if no transactions yet (truly new user)
-        const { data: txs } = await supabase
-          .from("transactions")
-          .select("id")
-          .eq("user_id", profile.user_id)
-          .limit(1);
-        if (!txs || txs.length === 0) {
-          await supabase.from("profiles").update({ credits: 3 }).eq("id", profile.id);
-          await supabase.from("transactions").insert({
-            user_id: profile.user_id, amount: 3, type: "trial_grant",
-            description: "Bônus de boas-vindas: 3 moedas gratuitas",
-          });
+        try {
+          const { ensureTrialCredits } = await import("@/services/profileEconomicService");
+          await ensureTrialCredits();
           await refreshProfile();
+        } catch (err) {
+          console.warn("[NutritionistDashboard] ensure_trial_credits:", err);
         }
       }
     })();
@@ -1110,33 +1103,33 @@ export default function NutritionistDashboard() {
         return;
       }
 
-      if (coinCost > 0) {
-        await supabase
-          .from("profiles")
-          .update({ credits: profile.credits - coinCost })
-          .eq("user_id", user.id);
-
-        await supabase.from("transactions").insert({
-          user_id: user.id, amount: -coinCost, type: "job_acceptance",
-          description: `Aceitou job #${request.id.slice(0, 8)}`,
-        });
-
+      // Efeito econômico confiável (1E.1B). Claim/pool permanece até 1E.2.
+      try {
+        const { consumeJobCredit } = await import("@/services/profileEconomicService");
+        const debit = await consumeJobCredit(request.id);
         await refreshProfile();
         void epicRumble.start({
           x: [0, -3, 3, -2, 2, 0],
           transition: { duration: 0.4 },
         });
-        toast.success("Job aceito! Boa validação.");
-      } else {
-        await supabase.from("transactions").insert({
-          user_id: user.id, amount: 0, type: "job_acceptance",
-          description: `Aceitou job #${request.id.slice(0, 8)} (Clínica — validação ilimitada)`,
-        });
-        void epicRumble.start({
-          x: [0, -3, 3, -2, 2, 0],
-          transition: { duration: 0.4 },
-        });
-        toast.success("Job aceito! Validação ilimitada do plano Clínica.");
+        if ((debit?.cost ?? coinCost) === 0) {
+          toast.success("Job aceito! Validação ilimitada do plano Clínica.");
+        } else {
+          toast.success("Job aceito! Boa validação.");
+        }
+      } catch (debitErr: unknown) {
+        const msg =
+          debitErr && typeof debitErr === "object" && "message" in debitErr
+            ? String((debitErr as { message: unknown }).message)
+            : "";
+        if (/insufficient credits/i.test(msg)) {
+          toast.error("Créditos insuficientes! Você precisa de pelo menos 1 moeda.");
+        } else {
+          console.error("[NutritionistDashboard] consume_job_credit:", debitErr);
+          toast.error("Job aceito, mas falhou o débito de crédito. Contate o suporte.");
+        }
+        void fetchRequests();
+        return;
       }
 
       let row: DietRequest = updated as DietRequest;
