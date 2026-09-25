@@ -1,0 +1,281 @@
+{
+  "createdAt": "2026-09-25T19:13:56.305Z",
+  "stage": "1E.1A",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "summary": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "recursionSeen": false
+  },
+  "adminBootstrapBoundary": "Admin creation/promotion is NOT available via authenticated RPC or signup metadata. Use service_role / operational SQL only.",
+  "results": [
+    {
+      "id": "A-01",
+      "operation": "C1 direct UPDATE role='admin'",
+      "expected": "BLOQUEADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "before": {
+        "role": "client"
+      },
+      "after": {
+        "role": "client"
+      },
+      "pass": true,
+      "classification": "BLOQUEADO"
+    },
+    {
+      "id": "A-02",
+      "operation": "C1 direct UPDATE role='nutritionist'",
+      "expected": "BLOQUEADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "after": {
+        "role": "client"
+      },
+      "pass": true,
+      "classification": "BLOQUEADO"
+    },
+    {
+      "id": "A-03",
+      "operation": "C1 direct UPDATE approved=true",
+      "expected": "BLOQUEADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "after": {
+        "approved": false
+      },
+      "pass": true,
+      "classification": "BLOQUEADO"
+    },
+    {
+      "id": "A-04",
+      "operation": "signup metadata role='admin'",
+      "expected": "profile role=client (nunca admin)",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "client",
+        "approved": false
+      },
+      "pass": true,
+      "classification": "OK"
+    },
+    {
+      "id": "A-05",
+      "operation": "signup client",
+      "expected": "OK role=client",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "client"
+      },
+      "pass": true
+    },
+    {
+      "id": "A-06",
+      "operation": "signup nutritionist",
+      "expected": "role=nutritionist approved=false",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "nutritionist",
+        "approved": false,
+        "credits": 3
+      },
+      "pass": true
+    },
+    {
+      "id": "A-07",
+      "operation": "signup personal_trainer",
+      "expected": "role=personal_trainer approved=false",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "personal_trainer",
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-08",
+      "operation": "pendingSignup-equivalent RPC client→nutritionist",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null,
+        "dataRole": "nutritionist"
+      },
+      "after": {
+        "role": "nutritionist",
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-09",
+      "operation": "RPC client→nutritionist",
+      "expected": "role=nutritionist approved=false",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "nutritionist",
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-10",
+      "operation": "RPC client→personal_trainer",
+      "expected": "role=personal_trainer approved=false",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "personal_trainer",
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-11",
+      "operation": "RPC nutritionist→client",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "role": "client"
+      },
+      "pass": true
+    },
+    {
+      "id": "A-12",
+      "operation": "C1 chama admin_set_professional_approval",
+      "expected": "NEGADO",
+      "httpOrSql": {
+        "error": {
+          "message": "admin required",
+          "code": "42501",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "after": {
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-13",
+      "operation": "A1 aprova e suspende profissional",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "mid": {
+        "approved": true
+      },
+      "after": {
+        "approved": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-14",
+      "operation": "UPDATE legítimo full_name",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "full_name": "Fixture Client C1 Updated"
+      },
+      "pass": true
+    },
+    {
+      "id": "A-15",
+      "operation": "UPDATE legítimo phone/client_data",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "phone": "11999990000",
+        "client_data": {
+          "note": "a15"
+        }
+      },
+      "pass": true
+    },
+    {
+      "id": "A-16",
+      "operation": "soft_delete_own_profile + recovery",
+      "expected": "OK",
+      "httpOrSql": {
+        "deleteError": null,
+        "recoverError": null
+      },
+      "mid": {
+        "deleted_at": "2026-09-25T19:13:55.949972+00:00"
+      },
+      "after": {
+        "deleted_at": null
+      },
+      "pass": true
+    },
+    {
+      "id": "A-17",
+      "operation": "nenhum 42P17 em SELECT autenticado",
+      "expected": "CLEAR",
+      "httpOrSql": {
+        "c1Error": null,
+        "a1Error": null,
+        "suiteRecursionSeen": false
+      },
+      "pass": true
+    },
+    {
+      "id": "A-SMOKE-INSERT",
+      "operation": "authenticated INSERT profiles",
+      "expected": "NEGADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT INSERT ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "pass": true
+    }
+  ]
+}
