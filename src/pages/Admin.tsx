@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import AdminSimulationView from "@/components/AdminSimulationView";
 import RetentionBotPreview from "@/components/RetentionBotPreview";
 import { fetchInvitePerformance, type ProfessionalPerformance } from "@/services/inviteAnalytics";
+import { adminSetProfessionalApproval } from "@/services/profileSecurityService";
 
 type Profile = any;
 type Transaction = any;
@@ -77,13 +78,13 @@ export default function Admin() {
   };
 
   const toggleApproval = async (p: Profile) => {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ approved: !p.approved })
-      .eq("id", p.id);
-    if (error) { toast.error("Erro ao atualizar status"); return; }
-    toast.success(p.approved ? "Nutricionista suspenso" : "Nutricionista aprovado");
-    fetchData();
+    try {
+      await adminSetProfessionalApproval(p.user_id, !p.approved);
+      toast.success(p.approved ? "Nutricionista suspenso" : "Nutricionista aprovado");
+      fetchData();
+    } catch {
+      toast.error("Erro ao atualizar status");
+    }
   };
 
   const addCredits = async (p: Profile) => {

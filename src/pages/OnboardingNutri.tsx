@@ -11,6 +11,7 @@ import {
 import { Leaf } from "lucide-react";
 import { toast } from "sonner";
 import { maskPhone, unmaskPhone, maskCRN, isCRNValid } from "@/lib/masks";
+import { requestOwnRoleTransition } from "@/services/profileSecurityService";
 
 const CRN_INVALID_MSG = "CRN inválido, por favor digite novamente seu CRN";
 
@@ -93,25 +94,21 @@ export default function OnboardingNutri() {
 
     setSaving(true);
     try {
-      // `phone` agora vive na própria tabela profiles (migration
-      // 20260423140000_add_phone_to_profiles). Mantemos também no user_metadata
-      // para compatibilidade com integrações que leem do auth.
-      const row = {
-        user_id: user.id,
-        full_name: fullName.trim(),
-        role: "nutritionist" as const,
-        crn_number: crnNumber.trim(),
-        phone: unmaskPhone(phone) || null,
-        credits: profile?.credits ?? 3,
-        plan_tier:
-          (profile as { plan_tier?: string } | null)?.plan_tier ?? "basic",
-        approved: profile?.approved ?? false,
-        updated_at: new Date().toISOString(),
-      };
+      // Identidade privilegiada: role/approved só via RPC.
+      // UPDATE direto apenas de campos comuns (sem credits/plan_tier).
+      if (profile?.role !== "nutritionist") {
+        await requestOwnRoleTransition("nutritionist", crnNumber.trim());
+      }
 
       const { error: upErr } = await supabase
         .from("profiles")
-        .upsert(row as never, { onConflict: "user_id" });
+        .update({
+          full_name: fullName.trim(),
+          crn_number: crnNumber.trim(),
+          phone: unmaskPhone(phone) || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
       if (upErr) throw upErr;
 
       await supabase.auth.updateUser({
@@ -131,7 +128,7 @@ export default function OnboardingNutri() {
       // que antes fazia o toast cair no fallback genérico "Erro ao salvar" e
       // escondia a causa real (ex.: coluna ausente ou RLS). Extraímos de forma
       // defensiva qualquer campo `message` disponível e logamos o payload bruto.
-      console.error("[OnboardingNutri] upsert error:", err);
+      console.error("[OnboardingNutri] save error:", err);
       const msg = extractErrorMessage(err);
       toast.error(msg);
     } finally {
@@ -144,22 +141,16 @@ export default function OnboardingNutri() {
     setSwitching(true);
     setCrnError(false);
     try {
-      const row = {
-        user_id: user.id,
-        full_name: fullName.trim() || profile?.full_name || "",
-        role: "client" as const,
-        crn_number: null,
-        phone: unmaskPhone(phone) || null,
-        credits: profile?.credits ?? 0,
-        plan_tier:
-          (profile as { plan_tier?: string } | null)?.plan_tier ?? "basic",
-        approved: profile?.approved ?? false,
-        updated_at: new Date().toISOString(),
-      };
+      await requestOwnRoleTransition("client");
 
       const { error } = await supabase
         .from("profiles")
-        .upsert(row as never, { onConflict: "user_id" });
+        .update({
+          full_name: fullName.trim() || profile?.full_name || "",
+          phone: unmaskPhone(phone) || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
       if (error) throw error;
 
       await supabase.auth.updateUser({ data: { role: "client" } });

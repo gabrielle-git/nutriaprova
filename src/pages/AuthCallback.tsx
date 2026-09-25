@@ -4,6 +4,12 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { clearPendingSignup, getPendingSignup } from "@/lib/pendingSignup";
 import { isCRNValid } from "@/lib/masks";
+import {
+  requestOwnRoleTransition,
+  sanitizePublicRole,
+  waitForOwnProfile,
+  type PublicRole,
+} from "@/services/profileSecurityService";
 
 type ProfileRow = {
   role: string | null;
@@ -80,59 +86,92 @@ export default function AuthCallback() {
         }
         const user = session.user;
 
-        // 3) Lê o perfil e reconcilia fallback de nome/role.
+        // 3) Aguarda profile criado pelo trigger (INSERT client-side revogado).
         const pending = getPendingSignup();
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("role, full_name, crn_number, referred_by")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        let profile = await waitForOwnProfile(user.id);
+
+        if (!profile) {
+          console.error("[AuthCallback] profile não criado pelo trigger");
+          clearPendingSignup();
+          navigate("/auth", { replace: true });
+          return;
+        }
 
         const metaFullName = (user.user_metadata?.full_name ?? user.user_metadata?.name ?? null) as string | null;
-        const safeMetaRole = user.user_metadata?.role as string | undefined;
         const safeMetaReferrer = (user.user_metadata?.referred_by ?? null) as string | null;
-        const fallbackRole = normalizeRole(pending?.role ?? existingProfile?.role ?? safeMetaRole ?? "client");
-        const fallbackName = pending?.fullName?.trim() || existingProfile?.full_name?.trim() || metaFullName?.trim() || null;
-        const fallbackReferrer = pending?.refCode?.trim() || existingProfile?.referred_by || safeMetaReferrer || null;
+        const fallbackName =
+          pending?.fullName?.trim() ||
+          profile.full_name?.trim() ||
+          metaFullName?.trim() ||
+          null;
+        const fallbackReferrer =
+          pending?.refCode?.trim() || profile.referred_by || safeMetaReferrer || null;
 
-        const needsProfileUpsert =
-          !existingProfile ||
-          !existingProfile.full_name ||
-          existingProfile.full_name.trim().length === 0 ||
-          !!pending?.role;
+        // Intenção de papel: pendingSignup / metadata = UX apenas.
+        // Nunca promove admin. Authority = profiles.role.
+        const desiredPublic: PublicRole = sanitizePublicRole(
+          pending?.role ?? (user.user_metadata?.role as string | undefined),
+        );
 
-        if (needsProfileUpsert) {
-          const payload = {
-            user_id: user.id,
-            role: fallbackRole,
-            full_name: fallbackName,
-            crn_number:
-              fallbackRole === "nutritionist"
-                ? (pending?.crnNumber ?? existingProfile?.crn_number ?? null)
-                : null,
-            referred_by: fallbackReferrer,
-          };
+        // Transição legítima quando o trigger criou client e o usuário
+        // escolheu nutri/PT (fluxo OAuth/pendingSignup).
+        if (
+          profile.role === "client" &&
+          (desiredPublic === "nutritionist" || desiredPublic === "personal_trainer")
+        ) {
+          try {
+            const crn =
+              desiredPublic === "nutritionist"
+                ? pending?.crnNumber ?? profile.crn_number ?? null
+                : null;
+            const updated = await requestOwnRoleTransition(desiredPublic, crn);
+            if (updated && typeof updated === "object") {
+              profile = {
+                ...profile,
+                role: (updated as { role?: string }).role ?? desiredPublic,
+                crn_number:
+                  (updated as { crn_number?: string | null }).crn_number ??
+                  profile.crn_number,
+                approved: false,
+              };
+            }
+          } catch (rpcErr) {
+            console.warn("[AuthCallback] role transition:", rpcErr);
+          }
+        }
+
+        // UPDATE apenas de campos comuns (não role/approved/credits/plan_tier).
+        const commonPatch: Record<string, string | null> = {};
+        if (fallbackName && (!profile.full_name || !profile.full_name.trim())) {
+          commonPatch.full_name = fallbackName;
+        }
+        if (fallbackReferrer && !profile.referred_by) {
+          commonPatch.referred_by = fallbackReferrer;
+        }
+        if (Object.keys(commonPatch).length > 0) {
           const { error: upErr } = await supabase
             .from("profiles")
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .upsert(payload as any, { onConflict: "user_id" });
-          if (upErr) console.warn("[AuthCallback] upsert profile:", upErr.message);
+            .update(commonPatch)
+            .eq("user_id", user.id);
+          if (upErr) console.warn("[AuthCallback] update profile:", upErr.message);
+        }
 
-          if (pending?.role) {
-            await supabase.auth.updateUser({ data: { role: pending.role } });
-          }
+        // Espelho UX em metadata — nunca autoridade.
+        if (pending?.role) {
+          const mirror = sanitizePublicRole(pending.role);
+          await supabase.auth.updateUser({ data: { role: mirror } });
         }
         clearPendingSignup();
 
         // 4) Lê o perfil final e valida nome completo obrigatório.
-        const { data: profile } = await supabase
+        const { data: finalProfile } = await supabase
           .from("profiles")
           .select("role, full_name, crn_number, referred_by")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const nextRoute = decideRoute(profile as ProfileRow | null, user);
-        if (!hasCompleteName(profile?.full_name)) {
+        const nextRoute = decideRoute(finalProfile as ProfileRow | null, user);
+        if (!hasCompleteName(finalProfile?.full_name)) {
           navigate(`/confirmar-nome-completo?next=${encodeURIComponent(nextRoute)}`, { replace: true });
           return;
         }

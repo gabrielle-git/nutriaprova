@@ -34,6 +34,7 @@ import LeadHunterCRM from "@/components/admin/LeadHunterCRM";
 import { Radar } from "lucide-react";
 import type { DietPlan } from "@/services/n8nService";
 import { blogAuthorBylineFromProfile } from "@/lib/utils";
+import { adminSetProfessionalApproval } from "@/services/profileSecurityService";
 import {
   AreaChart,
   Area,
@@ -248,9 +249,13 @@ export default function AdminSupremo() {
   };
 
   const toggleApproval = async (p: Profile) => {
-    await supabase.from("profiles").update({ approved: !p.approved }).eq("id", p.id);
-    toast.success(p.approved ? "Nutricionista suspenso" : "Nutricionista aprovado");
-    fetchData();
+    try {
+      await adminSetProfessionalApproval(p.user_id, !p.approved);
+      toast.success(p.approved ? "Nutricionista suspenso" : "Nutricionista aprovado");
+      fetchData();
+    } catch {
+      toast.error("Erro ao atualizar status");
+    }
   };
 
   const addCredits = async (p: Profile) => {
