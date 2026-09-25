@@ -1,0 +1,278 @@
+{
+  "createdAt": "2026-09-25T19:18:33.624Z",
+  "stage": "1E.1B",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "summary": {
+    "total": 15,
+    "passed": 15,
+    "failed": 0
+  },
+  "findings": [
+    {
+      "id": "CLINIC_GRANT_DIVERGENCE",
+      "note": "PlanCheckoutModal/RPC grant clinic=9999; TIER_CONFIG initialCoins=0 + unlimitedValidations. Preserved checkout grant; job cost clinic=0."
+    },
+    {
+      "id": "SEC-008_PENDING",
+      "note": "Arbitrary INSERT on transactions by authenticated may still succeed. Not closed in 1E.1B."
+    }
+  ],
+  "results": [
+    {
+      "id": "B-01",
+      "operation": "C1 direct UPDATE credits",
+      "expected": "BLOQUEADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "before": {
+        "credits": 0
+      },
+      "after": {
+        "credits": 0
+      },
+      "pass": true
+    },
+    {
+      "id": "B-02",
+      "operation": "C1 direct UPDATE plan_tier",
+      "expected": "BLOQUEADO",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "after": {
+        "plan_tier": "basic"
+      },
+      "pass": true
+    },
+    {
+      "id": "B-03",
+      "operation": "nutritionist elegível ensure_trial_credits",
+      "expected": "créditos=3",
+      "httpOrSql": {
+        "error": null,
+        "dataCredits": 3
+      },
+      "after": {
+        "credits": 3
+      },
+      "pass": true
+    },
+    {
+      "id": "B-04",
+      "operation": "segunda chamada ensure_trial_credits",
+      "expected": "não duplicar",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "credits": 3
+      },
+      "pass": true
+    },
+    {
+      "id": "B-05",
+      "operation": "consume_job_credit saldo suficiente",
+      "expected": "saldo -1 + transaction",
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "ok": true,
+          "cost": 1,
+          "credits": 4,
+          "plan_tier": "basic"
+        }
+      },
+      "before": {
+        "credits": 5
+      },
+      "after": {
+        "credits": 4
+      },
+      "pass": true
+    },
+    {
+      "id": "B-06",
+      "operation": "consume_job_credit saldo insuficiente",
+      "expected": "negado, credits>=0",
+      "httpOrSql": {
+        "error": {
+          "message": "insufficient credits",
+          "code": "P0001",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "after": {
+        "credits": 0
+      },
+      "pass": true
+    },
+    {
+      "id": "B-07",
+      "operation": "clinic consume_job_credit custo 0",
+      "expected": "cost=0 credits intactos",
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "ok": true,
+          "cost": 0,
+          "credits": 10,
+          "plan_tier": "clinic"
+        }
+      },
+      "pass": true
+    },
+    {
+      "id": "B-08",
+      "operation": "A1 admin_adjust_credits",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "credits": 12
+      },
+      "pass": true
+    },
+    {
+      "id": "B-09",
+      "operation": "C1 chama admin_adjust_credits",
+      "expected": "NEGADO",
+      "httpOrSql": {
+        "error": {
+          "message": "admin required",
+          "code": "42501",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "after": {
+        "credits": 5
+      },
+      "pass": true
+    },
+    {
+      "id": "B-10",
+      "operation": "downgrade_own_plan_to_freemium",
+      "expected": "OK",
+      "httpOrSql": {
+        "error": null
+      },
+      "after": {
+        "plan_tier": "freemium"
+      },
+      "pass": true
+    },
+    {
+      "id": "B-11",
+      "operation": "upgrade com saldo interno suficiente",
+      "expected": "tier muda + grant server-side",
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "grant": 20,
+          "status": "activated",
+          "credits": 20,
+          "debited": 40,
+          "plan_tier": "basic",
+          "clinic_grant_note": "clinic grant=9999 mirrors PlanCheckoutModal; TIER_CONFIG uses unlimitedValidations/initialCoins=0"
+        }
+      },
+      "before": {
+        "plan_tier": "freemium",
+        "credits": 3
+      },
+      "after": {
+        "plan_tier": "basic",
+        "credits": 20
+      },
+      "pass": true
+    },
+    {
+      "id": "B-12",
+      "operation": "upgrade saldo interno insuficiente",
+      "expected": "payment_required, sem mudança",
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "reason": "insufficient_internal_balance",
+          "status": "payment_required",
+          "credits": 3,
+          "required": 200,
+          "available": 0,
+          "plan_tier": "freemium"
+        }
+      },
+      "after": {
+        "plan_tier": "freemium",
+        "credits": 3
+      },
+      "pass": true
+    },
+    {
+      "id": "B-13",
+      "operation": "tier inválido",
+      "expected": "NEGADO",
+      "httpOrSql": {
+        "error": {
+          "message": "invalid target_tier",
+          "code": "22023",
+          "details": null,
+          "hint": null,
+          "status": null
+        }
+      },
+      "pass": true
+    },
+    {
+      "id": "B-14",
+      "operation": "tentativa injetar credits/plan_tier via cliente",
+      "expected": "bloqueado / sem parâmetro confiável",
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        }
+      },
+      "after": {
+        "credits": 5,
+        "plan_tier": "basic"
+      },
+      "pass": true,
+      "note": "activate_plan_with_internal_balance não aceita amount/credits do browser"
+    },
+    {
+      "id": "B-15",
+      "operation": "community milestone trigger",
+      "expected": "credits+1 + transaction",
+      "httpOrSql": {
+        "error": null
+      },
+      "before": {
+        "credits": 5
+      },
+      "after": {
+        "credits": 6
+      },
+      "pass": true
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "createdAt": "2026-09-25T19:20:00.000Z",
+  "stage": "1E.1-final",
+  "preHardeningEvidence": {
+    "path": "security/1c/evidence/results-1c1.json",
+    "sha256": "c4a60e1006877fa7ee450379f0fc9f8f878e6fde1066f5a0c83c6c059ae9fa71",
+    "immutable": true
+  },
+  "postHardeningMatrixRerun": {
+    "path": "security/1e/evidence/results-1e1-matrix-rerun.json",
+    "note": "Harness 1C.1 labels blocked attacks as NÃO CONFIRMADA (baselineAllowed=false). Interpret as CORRIGIDA/BLOQUEADA for SEC-005/006/007."
+  },
+  "matrixBeforeAfter": {
+    "SEC-005": { "before": "VULNERABILIDADE CONFIRMADA", "after": "CORRIGIDA / BLOQUEADA", "evidenceAfterLabel": "NÃO CONFIRMADA" },
+    "SEC-006": { "before": "VULNERABILIDADE CONFIRMADA", "after": "CORRIGIDA / BLOQUEADA", "evidenceAfterLabel": "NÃO CONFIRMADA" },
+    "SEC-007": { "before": "VULNERABILIDADE CONFIRMADA", "after": "CORRIGIDA / BLOQUEADA", "evidenceAfterLabel": "NÃO CONFIRMADA" },
+    "SEC-001": { "before": "VULNERABILIDADE CONFIRMADA", "after": "AINDA VULNERÁVEL (1E.2)" },
+    "SEC-002": { "before": "VULNERABILIDADE CONFIRMADA", "after": "AINDA VULNERÁVEL (1E.2)" },
+    "SEC-003": { "before": "VULNERABILIDADE CONFIRMADA", "after": "AINDA VULNERÁVEL (1E.2)" },
+    "SEC-004": { "before": "VULNERABILIDADE CONFIRMADA", "after": "AINDA VULNERÁVEL (1E.2)" },
+    "SEC-008": { "before": "VULNERABILIDADE CONFIRMADA", "after": "PENDENTE" },
+    "SEC-009": { "before": "VULNERABILIDADE CONFIRMADA", "after": "PENDENTE" },
+    "SEC-010": { "before": "VULNERABILIDADE CONFIRMADA", "after": "PENDENTE" },
+    "SEC-011": { "before": "VULNERABILIDADE CONFIRMADA", "after": "PENDENTE" }
+  },
+  "controls": {
+    "POS-01": "OK",
+    "POS-02": "OK",
+    "POS-03": "OK",
+    "POS-04": "OK",
+    "NEG-01": "OK",
+    "NEG-02": "OK"
+  },
+  "findings": [
+    {
+      "id": "CLINIC_GRANT_DIVERGENCE",
+      "detail": "Checkout/RPC grant clinic=9999; TIER_CONFIG initialCoins=0 + unlimitedValidations. Preserved checkout grant; job cost clinic remains 0."
+    },
+    {
+      "id": "DEV_SIMULATION_DISABLED",
+      "detail": "External payment DEV simulation UI retained but activation path removed — no production-callable unpaid entitlement RPC."
+    },
+    {
+      "id": "ADMIN_BOOTSTRAP",
+      "detail": "No authenticated RPC promotes admin. Fixtures use privileged harness channel only."
+    }
+  ],
+  "readyFor1E2": true
+}

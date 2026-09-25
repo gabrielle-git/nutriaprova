@@ -1,0 +1,775 @@
+{
+  "createdAt": "2026-09-25T19:18:53.197Z",
+  "stage": "1C.1",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "baseline": {
+    "C1": {
+      "role": "client",
+      "credits": 0,
+      "plan_tier": "basic",
+      "approved": false
+    },
+    "R1": {
+      "status": "pending",
+      "nutritionist_id": null,
+      "assigned_nutritionist_id": null,
+      "notes": "SECURITY_1C_FIXTURE:R1"
+    },
+    "R2": {
+      "status": "in_review",
+      "notes": "SECURITY_1C_FIXTURE:R2"
+    },
+    "clientData": {
+      "fullName": "Fixture Client C2",
+      "age": 30,
+      "goal": "audit-only-synthetic",
+      "notes": "SECURITY_1C_FIXTURE — not real patient data"
+    }
+  },
+  "results": [
+    {
+      "id": "SEC-001",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        },
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "SELECT diet_requests R1 (pool público de C2)",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 1,
+      "rowsAffected": 0,
+      "baselineBehavior": "C1 leu R1 de C2 (incl. client_data)",
+      "expectedAfterHardening": "Negar SELECT de pedido/client_data alheio no pool",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        },
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-002",
+      "kind": "sec",
+      "identity": "P1",
+      "initialState": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "operation": "SELECT diet_requests R1",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 1,
+      "rowsAffected": 0,
+      "baselineBehavior": "P1 leu R1",
+      "expectedAfterHardening": "Negar SELECT clínico a personal_trainer",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-003",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "operation": "UPDATE/claim R1",
+      "httpOrSql": {
+        "status": 204,
+        "error": null,
+        "afterAttack": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "status": "in_review",
+          "nutritionist_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "notes": "SECURITY_1C_SEC003_CLIENT_CLAIM"
+        }
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "C1 assumiu R1",
+      "expectedAfterHardening": "Negar claim de pool a client",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-004",
+      "kind": "sec",
+      "identity": "P1",
+      "initialState": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "operation": "UPDATE/claim R1",
+      "httpOrSql": {
+        "status": 204,
+        "error": null,
+        "afterAttack": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "status": "in_review",
+          "nutritionist_id": "62bc1af5-a195-48be-bfbd-e696a78c8eb1",
+          "notes": "SECURITY_1C_SEC004_PT_CLAIM"
+        }
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "P1 assumiu R1",
+      "expectedAfterHardening": "Negar claim de pool a personal_trainer",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-005",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "UPDATE profiles.role → admin",
+      "httpOrSql": {
+        "status": 403,
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        },
+        "midState": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 0,
+      "baselineBehavior": "Escalação sem efeito",
+      "expectedAfterHardening": "Negar self-update de role",
+      "baselineAllowed": false,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "classification": "NÃO CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-006",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "UPDATE profiles.credits → 9999",
+      "httpOrSql": {
+        "status": 403,
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        },
+        "midState": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 0,
+      "baselineBehavior": "Credits sem efeito",
+      "expectedAfterHardening": "Negar self-update de credits",
+      "baselineAllowed": false,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "classification": "NÃO CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-007",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "UPDATE profiles.plan_tier → premium",
+      "httpOrSql": {
+        "status": 403,
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;",
+          "status": null
+        },
+        "midState": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 0,
+      "baselineBehavior": "plan_tier sem efeito",
+      "expectedAfterHardening": "Negar self-update de plan_tier",
+      "baselineAllowed": false,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "classification": "NÃO CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-008",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "INSERT arbitrário em transactions",
+      "httpOrSql": {
+        "status": 201,
+        "error": null,
+        "insertedRows": [
+          {
+            "id": "67095d26-b78c-416e-99b4-2dc0e351aa43",
+            "amount": 99999,
+            "description": "SECURITY_1C_SEC008_1790363931390"
+          }
+        ]
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "C1 inseriu transaction arbitrária",
+      "expectedAfterHardening": "Negar self-insert de transactions",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "residualTx": 0
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-009",
+      "kind": "sec",
+      "identity": "anon",
+      "initialState": {},
+      "operation": "INSERT fraudulento sale+amount em invite_analytics",
+      "httpOrSql": {
+        "status": 201,
+        "error": null,
+        "insertedRows": [
+          {
+            "id": "062a32bc-ecdb-4114-a935-723ad911ff66",
+            "code": "SEC009_1C1_1790363931604",
+            "event_type": "sale",
+            "amount": 999.99
+          }
+        ]
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "Anon inseriu sale+amount",
+      "expectedAfterHardening": "Negar sale/amount para anon",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "residual": 0
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-010",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        }
+      },
+      "operation": "INSERT fraudulento sale+amount em invite_analytics",
+      "httpOrSql": {
+        "status": 201,
+        "error": null,
+        "insertedRows": [
+          {
+            "id": "8389cd47-2ce7-408d-a9df-26af6809ec2c",
+            "code": "SEC010_1C1_1790363931623",
+            "event_type": "sale",
+            "amount": 888.88
+          }
+        ]
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "C1 inseriu sale+amount",
+      "expectedAfterHardening": "Negar sale/amount a client",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "residual": 0
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "SEC-011",
+      "kind": "sec",
+      "identity": "C1",
+      "initialState": {
+        "R2_owner": "C2",
+        "feedback_client": "C1"
+      },
+      "operation": "INSERT client_feedback apontando para request de C2 (R2)",
+      "httpOrSql": {
+        "status": 201,
+        "error": null,
+        "insertedRows": [
+          {
+            "id": "fb66bb95-cb32-4796-8a59-7ece2c4eb4dd",
+            "diet_request_id": "eb54b565-3028-4d3f-9208-476d6ac3d0bd",
+            "client_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+            "comment": "SECURITY_1C_SEC011_1790363931856"
+          }
+        ]
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "C1 criou feedback em pedido de C2",
+      "expectedAfterHardening": "Exigir ownership do diet_request pelo client_id",
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "residual": 0
+      },
+      "classification": "VULNERABILIDADE CONFIRMADA",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-POS-01",
+      "kind": "control",
+      "identity": "C2",
+      "initialState": {},
+      "operation": "SELECT own R1+R2",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 2,
+      "rowsAffected": 0,
+      "baselineBehavior": "C2 vê R1 e R2",
+      "expectedAfterHardening": "Deve permitir (controle positivo)",
+      "expectedHardeningBlocks": false,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": true,
+      "controlObservedAllow": true,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-POS-02",
+      "kind": "control",
+      "identity": "N2",
+      "initialState": {},
+      "operation": "SELECT R2",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 1,
+      "rowsAffected": 0,
+      "baselineBehavior": "N2 vê R2",
+      "expectedAfterHardening": "Deve permitir (controle positivo)",
+      "expectedHardeningBlocks": false,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": true,
+      "controlObservedAllow": true,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-POS-03",
+      "kind": "control",
+      "identity": "N2",
+      "initialState": {},
+      "operation": "UPDATE R2 notes",
+      "httpOrSql": {
+        "status": 204,
+        "error": null
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 1,
+      "baselineBehavior": "N2 atualizou R2",
+      "expectedAfterHardening": "Deve permitir (controle positivo)",
+      "expectedHardeningBlocks": false,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": true,
+      "controlObservedAllow": true,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-POS-04",
+      "kind": "control",
+      "identity": "A1",
+      "initialState": {},
+      "operation": "SELECT R1+R2",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 2,
+      "rowsAffected": 0,
+      "baselineBehavior": "Admin vê ambos",
+      "expectedAfterHardening": "Deve permitir (controle positivo)",
+      "expectedHardeningBlocks": false,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": true,
+      "controlObservedAllow": true,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-NEG-01",
+      "kind": "control",
+      "identity": "C1",
+      "initialState": {},
+      "operation": "SELECT profile C2",
+      "httpOrSql": {
+        "status": 200,
+        "error": null,
+        "c1Gate": "role=client"
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 0,
+      "baselineBehavior": "C1 não leu profile C2",
+      "expectedAfterHardening": "Deve negar (controle negativo)",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": false,
+      "controlObservedAllow": false,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    },
+    {
+      "id": "CTRL-NEG-02",
+      "kind": "control",
+      "identity": "N1",
+      "initialState": {},
+      "operation": "SELECT R2 (owned by N2)",
+      "httpOrSql": {
+        "status": 200,
+        "error": null
+      },
+      "rowsReturned": 0,
+      "rowsAffected": 0,
+      "baselineBehavior": "N1 não leu R2",
+      "expectedAfterHardening": "Deve negar (controle negativo)",
+      "expectedHardeningBlocks": true,
+      "baselineAllowed": true,
+      "teardownOk": true,
+      "postTeardownOk": true,
+      "postTeardown": {
+        "C1": {
+          "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+          "role": "client",
+          "credits": 0,
+          "plan_tier": "basic",
+          "approved": false
+        },
+        "R1": {
+          "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1C_FIXTURE:R1"
+        }
+      },
+      "controlExpectedAllow": false,
+      "controlObservedAllow": false,
+      "classification": "CONTROLE OK",
+      "deterministic": "SIM"
+    }
+  ],
+  "finalContaminationCheck": {
+    "C1": {
+      "ok": true,
+      "profile": {
+        "user_id": "6f86a7e1-e7a5-4295-bddf-ead1df3ccde9",
+        "role": "client",
+        "credits": 0,
+        "plan_tier": "basic",
+        "approved": false
+      }
+    },
+    "R1": {
+      "ok": true,
+      "row": {
+        "id": "71b6e9f1-306b-4663-8a23-afd754ffd293",
+        "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+        "status": "pending",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null,
+        "notes": "SECURITY_1C_FIXTURE:R1"
+      }
+    },
+    "residual": {
+      "transactions": 0,
+      "invite_analytics": 0,
+      "client_feedback": 0
+    },
+    "clean": true
+  }
+}
