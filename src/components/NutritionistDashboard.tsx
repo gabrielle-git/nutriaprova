@@ -78,6 +78,10 @@ const SUPREME_EMAIL = "helena.gaby31@gmail.com";
 /** Transações com este `type` contam o uso diário de correções IA (Basic/Premium). */
 const AI_CORRECTION_TX_TYPE = "ai_correction";
 
+type ClaimOutcome = "ok" | "taken" | "not_approved" | "insufficient_credits" | "error";
+
+const NOT_APPROVED_MESSAGE = "Seu cadastro profissional ainda não foi aprovado para assumir solicitações.";
+
 function startOfLocalDayIso(): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -1002,35 +1006,72 @@ export default function NutritionistDashboard() {
   }, [requests, user?.id]);
 
   const tryClaimPoolRequest = useCallback(
-    async (requestId: string): Promise<"ok" | "taken" | "error"> => {
+    async (requestId: string): Promise<ClaimOutcome> => {
       if (!user?.id) return "error";
-      const { data: snap, error: snapErr } = await supabase
-        .from("diet_requests")
-        .select("nutritionist_id")
-        .eq("id", requestId)
-        .maybeSingle();
-      if (snapErr || !snap) return "error";
-      if (snap.nutritionist_id === user.id) return "ok";
-      if (snap.nutritionist_id != null) return "taken";
-      const { data: upd, error } = await supabase
-        .from("diet_requests")
-        .update({ nutritionist_id: user.id })
-        .eq("id", requestId)
-        .is("nutritionist_id", null)
-        .select()
-        .maybeSingle();
-      if (error) return "error";
-      if (upd) return "ok";
-      const { data: snap2 } = await supabase
-        .from("diet_requests")
-        .select("nutritionist_id")
-        .eq("id", requestId)
-        .maybeSingle();
-      if (snap2?.nutritionist_id === user.id) return "ok";
-      return "taken";
+      try {
+        const { claimDietRequest } = await import("@/services/dietRequestSecurityService");
+        const res = await claimDietRequest(requestId);
+        switch (res?.status) {
+          case "claimed":
+          case "already_owned":
+            return "ok";
+          case "already_claimed":
+          case "not_found":
+            return "taken";
+          case "not_eligible":
+            return res.reason === "assigned_to_other" ? "taken" : "error";
+          case "not_approved":
+            return "not_approved";
+          case "insufficient_credits":
+            return "insufficient_credits";
+          default:
+            return "error";
+        }
+      } catch (e) {
+        console.error("[NutritionistDashboard] claim_diet_request:", e);
+        return "error";
+      }
     },
     [user?.id],
   );
+
+  /**
+   * Garante posse da request antes de gravar (RLS de UPDATE é own-only desde a 1E.2B).
+   * Pending não é assumido aqui: aceite cobrado ocorre só via handleAcceptJob.
+   */
+  const ensureOwnedForWrite = async (row: DietRequest): Promise<DietRequest | null> => {
+    if (!user?.id) return null;
+    if (row.nutritionist_id === user.id) return row;
+    if (row.nutritionist_id != null) {
+      toast.error("Este cardápio já foi assumido por outro nutricionista.");
+      removeRequestFromUi(row.id);
+      await fetchRequests();
+      return null;
+    }
+    if (row.status === "pending") {
+      toast.error("Aceite a solicitação antes de editar ou validar.");
+      return null;
+    }
+    const claim = await tryClaimPoolRequest(row.id);
+    if (claim === "taken") {
+      toast.error("Este cardápio já foi assumido por outro nutricionista.");
+      removeRequestFromUi(row.id);
+      await fetchRequests();
+      return null;
+    }
+    if (claim === "not_approved") {
+      toast.error(NOT_APPROVED_MESSAGE);
+      return null;
+    }
+    if (claim !== "ok") {
+      toast.error("Não foi possível assumir o cardápio. Tente novamente.");
+      return null;
+    }
+    const { data: fresh } = await supabase.from("diet_requests").select("*").eq("id", row.id).maybeSingle();
+    const owned = (fresh ?? { ...row, nutritionist_id: user.id }) as DietRequest;
+    setSelectedRequest(owned);
+    return owned;
+  };
 
   const handleClaimAndOpen = async (request: DietRequest) => {
     if (!user?.id) {
@@ -1044,6 +1085,14 @@ export default function NutritionistDashboard() {
         toast.error("Este cardápio já foi assumido por outro nutricionista.");
         removeRequestFromUi(request.id);
         await fetchRequests();
+        return;
+      }
+      if (result === "not_approved") {
+        toast.error(NOT_APPROVED_MESSAGE);
+        return;
+      }
+      if (result === "insufficient_credits") {
+        toast.error("Créditos insuficientes! Você precisa de pelo menos 1 moeda.");
         return;
       }
       if (result === "error") {
@@ -1089,50 +1138,43 @@ export default function NutritionistDashboard() {
         professionalTier: profile.plan_tier ?? null,
       });
 
-      const { data: updated, error } = await supabase
-        .from("diet_requests")
-        .update({ status: "in_review", nutritionist_id: user.id, client_data: brandedClientData })
-        .eq("id", request.id)
-        .eq("status", "pending")
-        .select()
-        .single();
+      // Claim + débito atômicos no servidor (1E.2B): pending → in_review via consume_job_credit.
+      const { claimDietRequest } = await import("@/services/dietRequestSecurityService");
+      const claim = await claimDietRequest(request.id);
 
-      if (error || !updated) {
-        toast.error("Este job já foi aceito por outro nutricionista.");
-        void fetchRequests();
-        return;
-      }
-
-      // Efeito econômico confiável (1E.1B). Claim/pool permanece até 1E.2.
-      try {
-        const { consumeJobCredit } = await import("@/services/profileEconomicService");
-        const debit = await consumeJobCredit(request.id);
-        await refreshProfile();
-        void epicRumble.start({
-          x: [0, -3, 3, -2, 2, 0],
-          transition: { duration: 0.4 },
-        });
-        if ((debit?.cost ?? coinCost) === 0) {
-          toast.success("Job aceito! Validação ilimitada do plano Clínica.");
-        } else {
-          toast.success("Job aceito! Boa validação.");
-        }
-      } catch (debitErr: unknown) {
-        const msg =
-          debitErr && typeof debitErr === "object" && "message" in debitErr
-            ? String((debitErr as { message: unknown }).message)
-            : "";
-        if (/insufficient credits/i.test(msg)) {
+      if (claim?.status !== "claimed" && claim?.status !== "already_owned") {
+        if (claim?.status === "insufficient_credits") {
           toast.error("Créditos insuficientes! Você precisa de pelo menos 1 moeda.");
+        } else if (claim?.status === "not_approved") {
+          toast.error(NOT_APPROVED_MESSAGE);
+        } else if (claim?.status === "not_eligible" && claim.reason === "role") {
+          toast.error("Apenas nutricionistas podem aceitar solicitações.");
         } else {
-          console.error("[NutritionistDashboard] consume_job_credit:", debitErr);
-          toast.error("Job aceito, mas falhou o débito de crédito. Contate o suporte.");
+          toast.error("Este job já foi aceito por outro nutricionista.");
         }
         void fetchRequests();
         return;
       }
 
-      let row: DietRequest = updated as DietRequest;
+      const { error: brandErr } = await supabase
+        .from("diet_requests")
+        .update({ client_data: brandedClientData })
+        .eq("id", request.id)
+        .eq("nutritionist_id", user.id);
+      if (brandErr) console.warn("[NutritionistDashboard] accept branding:", brandErr.message);
+
+      await refreshProfile();
+      void epicRumble.start({
+        x: [0, -3, 3, -2, 2, 0],
+        transition: { duration: 0.4 },
+      });
+      if ((claim.cost ?? coinCost) === 0) {
+        toast.success("Job aceito! Validação ilimitada do plano Clínica.");
+      } else {
+        toast.success("Job aceito! Boa validação.");
+      }
+
+      let row: DietRequest = { ...request, nutritionist_id: user.id, status: "in_review" };
       await fetchRequests();
 
       const { data: refetched } = await supabase.from("diet_requests").select("*").eq("id", row.id).maybeSingle();
@@ -1168,38 +1210,45 @@ export default function NutritionistDashboard() {
     });
   }, []);
 
-  const handleSaveInlineEdit = useCallback(async () => {
+  const handleSaveInlineEdit = async () => {
     if (!selectedRequest || !editableDraft) return;
 
     const newTotalCalories = Object.values(editableDraft.meals).reduce((sum, m) => sum + (m?.calories ?? 0), 0);
     const updatedDraft: DietPlan = { ...editableDraft, totalCalories: newTotalCalories };
 
     try {
+      const owned = await ensureOwnedForWrite(selectedRequest);
+      if (!owned) return;
+
       const { error } = await supabase
         .from("diet_requests")
         .update({ ai_draft: updatedDraft as unknown as Json })
-        .eq("id", selectedRequest.id);
+        .eq("id", owned.id)
+        .eq("nutritionist_id", owned.nutritionist_id!);
 
       if (error) throw error;
 
-      setSelectedRequest({ ...selectedRequest, ai_draft: updatedDraft as unknown as Json });
+      setSelectedRequest({ ...owned, ai_draft: updatedDraft as unknown as Json });
       setInlineEditMode(false);
       toast.success("Rascunho atualizado com sucesso.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao salvar";
       toast.error(msg);
     }
-  }, [selectedRequest, editableDraft]);
+  };
 
   const handleSaveMarkdownEdit = async () => {
     if (!selectedRequest || !editableMarkdown.trim()) return;
     try {
+      const owned = await ensureOwnedForWrite(selectedRequest);
+      if (!owned) return;
       const { error } = await supabase
         .from("diet_requests")
         .update({ ai_draft: editableMarkdown } as any)
-        .eq("id", selectedRequest.id);
+        .eq("id", owned.id)
+        .eq("nutritionist_id", owned.nutritionist_id!);
       if (error) throw error;
-      setSelectedRequest({ ...selectedRequest, ai_draft: editableMarkdown as any });
+      setSelectedRequest({ ...owned, ai_draft: editableMarkdown as any });
       setMarkdownEditMode(false);
       toast.success("Rascunho em texto salvo com sucesso.");
     } catch (err: unknown) {
@@ -1209,30 +1258,8 @@ export default function NutritionistDashboard() {
 
   const handleApprove = async () => {
     if (!selectedRequest || !user?.id) return;
-    let row = selectedRequest;
-
-    if (row.nutritionist_id !== user.id) {
-      if (row.nutritionist_id != null) {
-        toast.error("Este cardápio já foi assumido por outro nutricionista.");
-        removeRequestFromUi(row.id);
-        await fetchRequests();
-        return;
-      }
-      const claim = await tryClaimPoolRequest(row.id);
-      if (claim === "taken") {
-        toast.error("Este cardápio já foi assumido por outro nutricionista.");
-        removeRequestFromUi(row.id);
-        await fetchRequests();
-        return;
-      }
-      if (claim === "error") {
-        toast.error("Não foi possível validar. Tente novamente.");
-        return;
-      }
-      const { data: fresh } = await supabase.from("diet_requests").select("*").eq("id", row.id).maybeSingle();
-      if (fresh) row = fresh as DietRequest;
-      setSelectedRequest(row);
-    }
+    const row = await ensureOwnedForWrite(selectedRequest);
+    if (!row) return;
 
     const brandedClientData = enrichClientDataWithBranding(row.client_data, {
       clinicLogoUrl: profile?.clinic_logo_url ?? null,
@@ -1245,8 +1272,13 @@ export default function NutritionistDashboard() {
     };
     if (trimmedExpert) payload.notes = trimmedExpert;
 
-    const { error: upErr } = await supabase.from("diet_requests").update(payload).eq("id", row.id).eq("nutritionist_id", user.id);
-    if (upErr) {
+    const { data: approvedRows, error: upErr } = await supabase
+      .from("diet_requests")
+      .update(payload)
+      .eq("id", row.id)
+      .eq("nutritionist_id", user.id)
+      .select("id");
+    if (upErr || !approvedRows?.length) {
       console.warn("[NutritionistDashboard] approve:", upErr.message);
       toast.error("Não foi possível concluir a validação.");
       return;
@@ -1288,6 +1320,9 @@ export default function NutritionistDashboard() {
       }
     }
 
+    const owned = await ensureOwnedForWrite(selectedRequest);
+    if (!owned) return;
+
     setAdjusting(true);
     try {
       const raw = await adjustDietWithAI(safeForAi.plan, aiInstruction.trim());
@@ -1302,7 +1337,8 @@ export default function NutritionistDashboard() {
       const { error: upErr } = await supabase
         .from("diet_requests")
         .update({ ai_draft: newDraft as unknown as Json })
-        .eq("id", selectedRequest.id);
+        .eq("id", owned.id)
+        .eq("nutritionist_id", user.id);
       if (upErr) throw upErr;
 
       if (!isSupreme && cfg.aiCorrectionsPerDay !== "unlimited") {
@@ -1315,7 +1351,7 @@ export default function NutritionistDashboard() {
         if (txErr) console.warn("[NutritionistDashboard] ai_correction tx:", txErr.message);
       }
 
-      setSelectedRequest({ ...selectedRequest, ai_draft: newDraft as unknown as Json });
+      setSelectedRequest({ ...owned, ai_draft: newDraft as unknown as Json });
       setAiInstruction("");
       if (!isSupreme && cfg.aiCorrectionsPerDay !== "unlimited") {
         setAiCorrectionsToday((n) => n + 1);
@@ -1368,6 +1404,9 @@ export default function NutritionistDashboard() {
       return;
     }
 
+    const owned = await ensureOwnedForWrite(selectedRequest);
+    if (!owned) return;
+
     setAdjusting(true);
     try {
       const newMarkdown = await adjustMarkdownWithAI(currentText, aiInstruction.trim());
@@ -1375,7 +1414,8 @@ export default function NutritionistDashboard() {
       const { error: upErr } = await supabase
         .from("diet_requests")
         .update({ ai_draft: newMarkdown } as any)
-        .eq("id", selectedRequest.id);
+        .eq("id", owned.id)
+        .eq("nutritionist_id", user.id);
       if (upErr) throw upErr;
 
       // Registra uso no histórico de transações (respeita limite do tier)
@@ -1390,7 +1430,7 @@ export default function NutritionistDashboard() {
         setAiCorrectionsToday((n) => n + 1);
       }
 
-      setSelectedRequest({ ...selectedRequest, ai_draft: newMarkdown as any });
+      setSelectedRequest({ ...owned, ai_draft: newMarkdown as any });
       // Se estava editando no textarea, atualiza o textarea também
       if (markdownEditMode) setEditableMarkdown(newMarkdown);
       setAiInstruction("");
