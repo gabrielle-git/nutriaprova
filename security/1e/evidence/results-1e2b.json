@@ -1,0 +1,1387 @@
+{
+  "createdAt": "2026-09-28T22:40:02.266Z",
+  "stage": "1E.2-b",
+  "supabaseUrl": "http://127.0.0.1:54321",
+  "fixtures": {
+    "identities": {
+      "C1": "client",
+      "C2": "client",
+      "N0": "nutritionist approved=false (criado/removido pelo harness)",
+      "N1": "nutritionist approved=true",
+      "N2": "nutritionist approved=true",
+      "P1": "personal_trainer",
+      "A1": "admin",
+      "anon": "não autenticado"
+    },
+    "requests": {
+      "R1": {
+        "client_id": "C2",
+        "status": "pending",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null
+      },
+      "R2": {
+        "client_id": "C2",
+        "status": "pending",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": "N1"
+      },
+      "R3": {
+        "client_id": "C2",
+        "status": "in_review",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null
+      },
+      "R4": {
+        "client_id": "C2",
+        "status": "processing",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null
+      },
+      "R5": {
+        "client_id": "C2",
+        "status": "awaiting_validation",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null
+      },
+      "R6": {
+        "client_id": "C2",
+        "status": "in_review",
+        "nutritionist_id": "N2",
+        "assigned_nutritionist_id": null
+      },
+      "R7": {
+        "client_id": "C2",
+        "status": "completed",
+        "nutritionist_id": null,
+        "assigned_nutritionist_id": null
+      }
+    }
+  },
+  "secMatrix": {
+    "SEC-001": "BLOQUEADA",
+    "SEC-002": "BLOQUEADA",
+    "SEC-003": "BLOQUEADA",
+    "SEC-004": "BLOQUEADA",
+    "SEC-005": "BLOQUEADA",
+    "SEC-006": "BLOQUEADA",
+    "SEC-007": "BLOQUEADA"
+  },
+  "summary": {
+    "total": 53,
+    "graded": 53,
+    "passed": 53,
+    "failed": 0,
+    "recursionSeen": false
+  },
+  "teardown": {
+    "residualRequests": 0,
+    "residualTransactions": 0,
+    "n0Removed": true,
+    "profilesRestored": true,
+    "clean": true
+  },
+  "results": [
+    {
+      "id": "SEC-001",
+      "secId": "SEC-001",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-002",
+      "secId": "SEC-002",
+      "identity": "P1",
+      "role": "personal_trainer",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-003",
+      "secId": "SEC-003",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "direct UPDATE R1 nutritionist_id=C1 status=in_review",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "afterAttack": {
+          "id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1E2_FIXTURE:R1"
+        }
+      },
+      "expectation": "BLOQUEADO",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-004",
+      "secId": "SEC-004",
+      "identity": "P1",
+      "role": "personal_trainer",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "direct UPDATE R1 nutritionist_id=P1 status=in_review",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "afterAttack": {
+          "id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "client_id": "b3197a8d-4649-4963-9f5f-7342566b42b9",
+          "status": "pending",
+          "nutritionist_id": null,
+          "assigned_nutritionist_id": null,
+          "notes": "SECURITY_1E2_FIXTURE:R1"
+        }
+      },
+      "expectation": "BLOQUEADO",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-005",
+      "secId": "SEC-005",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "operation": "C1 UPDATE profiles.role → admin",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;"
+        }
+      },
+      "expectation": "BLOQUEADO (regression guard 1E.1)",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-006",
+      "secId": "SEC-006",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "operation": "C1 UPDATE profiles.credits → 9999",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;"
+        }
+      },
+      "expectation": "BLOQUEADO (regression guard 1E.1)",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "SEC-007",
+      "secId": "SEC-007",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "operation": "C1 UPDATE profiles.plan_tier → premium",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "permission denied for table profiles",
+          "code": "42501",
+          "details": null,
+          "hint": "Grant the required privileges to the current role with: GRANT UPDATE ON public.profiles TO authenticated;"
+        }
+      },
+      "expectation": "BLOQUEADO (regression guard 1E.1)",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "vulnerableObserved": false,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-01",
+      "secId": null,
+      "identity": "N0",
+      "role": "nutritionist",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-02",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R1",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-03",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R2",
+      "requestId": "e46c252c-3400-4d49-8b9a-17e785a98e76",
+      "status": "pending",
+      "assigned_nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R2",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-04",
+      "secId": null,
+      "identity": "N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R2",
+      "requestId": "e46c252c-3400-4d49-8b9a-17e785a98e76",
+      "status": "pending",
+      "assigned_nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R2",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-05",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R3",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-06",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R4",
+      "requestId": "72bbf2a6-fb98-42f7-aaf8-85404400bb3f",
+      "status": "processing",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R4",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-07",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R5",
+      "requestId": "0d953954-0d1a-4f6b-807c-ea0e336aad9e",
+      "status": "awaiting_validation",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R5",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-08",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R6",
+      "requestId": "f5967c71-6446-440d-8f9e-6811f58ecef2",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "93d56cc4-7fe9-4448-9270-edf1a827ba99",
+      "operation": "SELECT diet_requests R6",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-09",
+      "secId": null,
+      "identity": "N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R6",
+      "requestId": "f5967c71-6446-440d-8f9e-6811f58ecef2",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "93d56cc4-7fe9-4448-9270-edf1a827ba99",
+      "operation": "SELECT diet_requests R6",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-12",
+      "secId": null,
+      "identity": "anon",
+      "role": null,
+      "approved": null,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-13",
+      "secId": null,
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R7",
+      "requestId": "33c589a4-b2d4-49bf-acd4-140a9b49f040",
+      "status": "completed",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "SELECT diet_requests R7",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "0 rows",
+      "result": "0 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-10",
+      "identity": "C2",
+      "role": "client",
+      "approved": false,
+      "operation": "C2 SELECT requests próprias (R1…R7)",
+      "rows": 7,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "7 rows",
+      "result": "7 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-11",
+      "identity": "A1",
+      "role": "admin",
+      "approved": true,
+      "operation": "A1 SELECT global (R1…R7)",
+      "rows": 7,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "7 rows",
+      "result": "7 rows",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "A-14",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "operation": "N1 SELECT agregado (equivalente a fetchRequests do dashboard)",
+      "rows": 5,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "R1–R5 visíveis; R6/R7 ocultos",
+      "result": "R1,R2,R3,R4,R5",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-01",
+      "identity": "C1",
+      "role": "client",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "rpc claim_diet_request(R1)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "reason": "role",
+          "status": "not_eligible"
+        }
+      },
+      "expectation": "NEGADO",
+      "result": "NEGADO (not_eligible)",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-02",
+      "identity": "P1",
+      "role": "personal_trainer",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "rpc claim_diet_request(R1)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "reason": "role",
+          "status": "not_eligible"
+        }
+      },
+      "expectation": "NEGADO",
+      "result": "NEGADO (not_eligible)",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-03",
+      "identity": "N0",
+      "role": "nutritionist",
+      "approved": false,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "rpc claim_diet_request(R1)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "status": "not_approved"
+        }
+      },
+      "expectation": "NEGADO",
+      "result": "NEGADO (not_approved)",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-04",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 rpc claim_diet_request(R1 pending)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 1,
+          "status": "claimed",
+          "credits": 4,
+          "request_id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "request_status": "in_review"
+        }
+      },
+      "expectation": "SUCESSO",
+      "result": "claimed",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-05",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "estado final R1 após claim",
+      "rows": 1,
+      "httpOrSql": {
+        "credits": {
+          "before": 5,
+          "after": 4
+        },
+        "jobTransactions": [
+          {
+            "amount": -1,
+            "type": "job_acceptance",
+            "user_id": "cf52d04b-00a5-424e-bda8-6c3074607c13"
+          }
+        ]
+      },
+      "expectation": "nutritionist_id=N1, status=in_review, débito único de 1 crédito (consume_job_credit)",
+      "result": "status=in_review owner=N1 credits 5→4 txs=1",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-06",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 repete claim R1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "status": "already_owned",
+          "request_id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "request_status": "in_review"
+        }
+      },
+      "expectation": "idempotente (already_owned), sem novo débito",
+      "result": "already_owned credits=4 txs=1",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-07",
+      "identity": "N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N2 tenta claim de R1 (já de N1)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "status": "already_claimed"
+        }
+      },
+      "expectation": "NEGADO/CONFLICT",
+      "result": "already_claimed",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-09",
+      "identity": "N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R2",
+      "requestId": "e46c252c-3400-4d49-8b9a-17e785a98e76",
+      "status": "pending",
+      "assigned_nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "nutritionist_id": null,
+      "operation": "N2 claim R2 (assigned=N1)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "reason": "assigned_to_other",
+          "status": "not_eligible"
+        }
+      },
+      "expectation": "NEGADO",
+      "result": "not_eligible",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-08",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R2",
+      "requestId": "e46c252c-3400-4d49-8b9a-17e785a98e76",
+      "status": "in_review",
+      "assigned_nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 claim R2 (assigned=N1)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 1,
+          "status": "claimed",
+          "credits": 4,
+          "request_id": "e46c252c-3400-4d49-8b9a-17e785a98e76",
+          "request_status": "in_review"
+        }
+      },
+      "expectation": "SUCESSO",
+      "result": "claimed",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-10",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 direct UPDATE R1 (unclaimed) nutritionist_id=N1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "BLOQUEADO (RPC é o único caminho de claim)",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-10b",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 direct UPDATE R3 (unclaimed) nutritionist_id=N1",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "BLOQUEADO (RPC é o único caminho de claim)",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-11a",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 claim R3 (in_review unclaimed)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 0,
+          "status": "claimed",
+          "request_id": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+          "request_status": "in_review"
+        }
+      },
+      "expectation": "claimed, status in_review preservado, sem débito",
+      "result": "claimed status=in_review credits 5→5",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-11",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 UPDATE legítimo (ai_draft/notes) de request própria",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "OK",
+      "result": "OK",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-12",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 UPDATE request própria nutritionist_id → N2",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "new row violates row-level security policy for table \"diet_requests\"",
+          "code": "42501",
+          "details": null,
+          "hint": null
+        }
+      },
+      "expectation": "BLOQUEADO",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-13",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 UPDATE request própria nutritionist_id → NULL",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "new row violates row-level security policy for table \"diet_requests\"",
+          "code": "42501",
+          "details": null,
+          "hint": null
+        }
+      },
+      "expectation": "BLOQUEADO",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-11b",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "completed",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 valida request própria (status → completed)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "OK",
+      "result": "completed",
+      "pass": true,
+      "teardown": "deferred"
+    },
+    {
+      "id": "B-11c",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "completed",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 SELECT completed próprio",
+      "rows": 1,
+      "expectation": "visível",
+      "result": "VISÍVEL",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-14",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R6",
+      "requestId": "f5967c71-6446-440d-8f9e-6811f58ecef2",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "93d56cc4-7fe9-4448-9270-edf1a827ba99",
+      "operation": "N1 UPDATE R6 (de N2)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null
+      },
+      "expectation": "BLOQUEADO",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-15",
+      "identity": "N1×N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "claim concorrente N1 × N2 em R1 (5 rodadas)",
+      "rows": 5,
+      "httpOrSql": {
+        "rounds": [
+          {
+            "round": 1,
+            "N1": "claimed",
+            "N2": "already_claimed",
+            "owner": "N1",
+            "jobTransactions": 1,
+            "ok": true
+          },
+          {
+            "round": 2,
+            "N1": "already_claimed",
+            "N2": "claimed",
+            "owner": "N2",
+            "jobTransactions": 1,
+            "ok": true
+          },
+          {
+            "round": 3,
+            "N1": "claimed",
+            "N2": "already_claimed",
+            "owner": "N1",
+            "jobTransactions": 1,
+            "ok": true
+          },
+          {
+            "round": 4,
+            "N1": "claimed",
+            "N2": "already_claimed",
+            "owner": "N1",
+            "jobTransactions": 1,
+            "ok": true
+          },
+          {
+            "round": 5,
+            "N1": "claimed",
+            "N2": "already_claimed",
+            "owner": "N1",
+            "jobTransactions": 1,
+            "ok": true
+          }
+        ]
+      },
+      "expectation": "exatamente 1 vencedor e 1 débito por rodada",
+      "result": "1 vencedor em todas as rodadas",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-16",
+      "identity": "A1",
+      "role": "admin",
+      "approved": true,
+      "request": "R6",
+      "requestId": "f5967c71-6446-440d-8f9e-6811f58ecef2",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "93d56cc4-7fe9-4448-9270-edf1a827ba99",
+      "operation": "A1 SELECT global + UPDATE administrativo (R6.notes); A1 claim via RPC",
+      "rows": 7,
+      "httpOrSql": {
+        "selectError": null,
+        "updateError": null,
+        "adminClaimRpc": {
+          "reason": "role",
+          "status": "not_eligible"
+        }
+      },
+      "expectation": "admin lê tudo e atualiza; RPC de claim exige nutritionist aprovado",
+      "result": "select=7 updated=true claimRpc=not_eligible",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-18",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 (credits=0, basic) claim R1 pending",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "status": "insufficient_credits"
+        }
+      },
+      "expectation": "insufficient_credits; R1 intacto; credits 0; sem transaction",
+      "result": "insufficient_credits credits=0 txs=0",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-19",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "N1 clinic claim R1 pending",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 0,
+          "status": "claimed",
+          "credits": 2,
+          "request_id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "request_status": "in_review"
+        }
+      },
+      "expectation": "claimed; credits inalterados; 1 transaction amount=0",
+      "result": "claimed credits=2 txs=[0]",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-20a",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R4",
+      "requestId": "72bbf2a6-fb98-42f7-aaf8-85404400bb3f",
+      "status": "processing",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 claim R4 (processing)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 0,
+          "status": "claimed",
+          "request_id": "72bbf2a6-fb98-42f7-aaf8-85404400bb3f",
+          "request_status": "processing"
+        }
+      },
+      "expectation": "claimed, status preservado, sem débito",
+      "result": "claimed status=processing",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-20b",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R5",
+      "requestId": "0d953954-0d1a-4f6b-807c-ea0e336aad9e",
+      "status": "awaiting_validation",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 claim R5 (awaiting_validation)",
+      "rows": 1,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "cost": 0,
+          "status": "claimed",
+          "request_id": "0d953954-0d1a-4f6b-807c-ea0e336aad9e",
+          "request_status": "awaiting_validation"
+        }
+      },
+      "expectation": "claimed, status preservado, sem débito",
+      "result": "claimed status=awaiting_validation",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-20c",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R7",
+      "requestId": "33c589a4-b2d4-49bf-acd4-140a9b49f040",
+      "status": "completed",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "N1 claim R7 (completed)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": null,
+        "data": {
+          "reason": "status",
+          "status": "not_eligible"
+        }
+      },
+      "expectation": "not_eligible",
+      "result": "not_eligible status=completed",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-21",
+      "identity": "N1/N2",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "após claim de N1: SELECT R1 por N2 e por N1",
+      "rows": 1,
+      "expectation": "N2: 0 rows; N1: visível",
+      "result": "N2=0 N1=1",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "RT-01",
+      "identity": "N1,N2,C1,C2,P1,N0",
+      "role": "mixed",
+      "approved": null,
+      "operation": "realtime postgres_changes UPDATE em R1/R2/R6 (service role)",
+      "rows": null,
+      "httpOrSql": {
+        "subscribed": {
+          "N1": "SUBSCRIBED",
+          "N2": "SUBSCRIBED",
+          "C1": "SUBSCRIBED",
+          "C2": "SUBSCRIBED",
+          "P1": "SUBSCRIBED",
+          "N0": "SUBSCRIBED"
+        },
+        "received": {
+          "N1": [
+            "R1",
+            "R2"
+          ],
+          "N2": [
+            "R1",
+            "R6"
+          ],
+          "C1": [],
+          "C2": [
+            "R1",
+            "R2",
+            "R6"
+          ],
+          "P1": [],
+          "N0": []
+        },
+        "expected": {
+          "N1": [
+            "R1",
+            "R2"
+          ],
+          "N2": [
+            "R1",
+            "R6"
+          ],
+          "C1": [],
+          "C2": [
+            "R1",
+            "R2",
+            "R6"
+          ],
+          "P1": [],
+          "N0": []
+        },
+        "allowed": {
+          "N1": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5"
+          ],
+          "N2": [
+            "R1",
+            "R3",
+            "R4",
+            "R5",
+            "R6"
+          ],
+          "C1": [],
+          "C2": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6",
+            "R7"
+          ],
+          "P1": [],
+          "N0": []
+        },
+        "leaks": {
+          "N1": [],
+          "N2": [],
+          "C1": [],
+          "C2": [],
+          "P1": [],
+          "N0": []
+        },
+        "missing": {
+          "N1": [],
+          "N2": [],
+          "C1": [],
+          "C2": [],
+          "P1": [],
+          "N0": []
+        }
+      },
+      "expectation": "cada identidade recebe os UPDATEs esperados e nenhuma linha fora do RLS",
+      "result": "{\"N1\":[\"R1\",\"R2\"],\"N2\":[\"R1\",\"R6\"],\"C1\":[],\"C2\":[\"R1\",\"R2\",\"R6\"],\"P1\":[],\"N0\":[]}",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "UI-01",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "in_review",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "handleAcceptJob: rpc claim → UPDATE client_data (own) → fetchRequests",
+      "rows": 1,
+      "httpOrSql": {
+        "claim": {
+          "cost": 1,
+          "status": "claimed",
+          "credits": 4,
+          "request_id": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+          "request_status": "in_review"
+        },
+        "claimError": null,
+        "brandError": null
+      },
+      "expectation": "claimed; branding gravado; R1 in_review/N1 no feed; 1 débito",
+      "result": "claim=claimed branded=1 feedR1=in_review credits 5→4 txs=1",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "UI-02",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R3",
+      "requestId": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+      "status": "completed",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": "cf52d04b-00a5-424e-bda8-6c3074607c13",
+      "operation": "Editar e Validar (in_review sem dono): ensureOwnedForWrite → save draft → handleApprove → histórico",
+      "rows": 1,
+      "httpOrSql": {
+        "claim": {
+          "cost": 0,
+          "status": "claimed",
+          "request_id": "7a90a32d-db35-4092-b25c-4dc00e148b96",
+          "request_status": "in_review"
+        },
+        "draftError": null,
+        "approveError": null
+      },
+      "expectation": "claim gratuito; draft e aprovação gravam 1 linha; R3 no histórico; sem débito",
+      "result": "claim=claimed draft=1 approve=1 history=true credits 5→5",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "UI-03",
+      "identity": "N1",
+      "role": "nutritionist",
+      "approved": true,
+      "request": "R1",
+      "requestId": "9b34b467-a67c-4830-b19c-cbef5a48963f",
+      "status": "pending",
+      "assigned_nutritionist_id": null,
+      "nutritionist_id": null,
+      "operation": "caminho legado pré-1E.2B de handleAcceptJob (UPDATE direto claim)",
+      "rows": 0,
+      "httpOrSql": {
+        "error": {
+          "message": "Cannot coerce the result to a single JSON object",
+          "code": "PGRST116",
+          "details": "The result contains 0 rows",
+          "hint": null
+        }
+      },
+      "expectation": "0 linhas; R1 inalterado",
+      "result": "BLOQUEADO",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "UI-04",
+      "identity": "N0/C2",
+      "role": "mixed",
+      "approved": null,
+      "operation": "dashboard N0 (feed + aceitar) e ClientDashboard C2 (próprias)",
+      "rows": 0,
+      "expectation": "N0: feed vazio, claim not_approved; C2: 7 próprias",
+      "result": "N0 feed=0 claim=not_approved C2 own=7",
+      "pass": true,
+      "teardown": "OK"
+    },
+    {
+      "id": "B-17",
+      "identity": "all",
+      "role": null,
+      "approved": null,
+      "operation": "nenhum 42P17 em toda a suíte",
+      "rows": null,
+      "expectation": "CLEAR",
+      "result": "CLEAR",
+      "pass": true,
+      "teardown": "OK"
+    }
+  ]
+}

@@ -1,0 +1,484 @@
+{
+  "createdAt": "2026-09-28T22:41:20.416Z",
+  "stage": "1E.2 — hardening diet_requests (pool / visibilidade / claim)",
+  "environment": "Supabase Local isolado (127.0.0.1); nenhum Supabase remoto",
+  "branch": "fix/security-1e2-diet-requests-authorization",
+  "base": "f20ebab",
+  "mainUnchanged": "42d73c6",
+  "commits": [
+    "52a8665 refactor(diet-requests): use trusted claim operation",
+    "499226f fix(security): secure diet request claim flow",
+    "0ae201c test(security): preserve 1E.2A pool authorization evidence",
+    "8cbfde8 fix(security): restrict diet request pool visibility"
+  ],
+  "migrations": [
+    "supabase/migrations/20260928190000_harden_diet_requests_pool_visibility.sql",
+    "supabase/migrations/20260928191000_harden_diet_requests_claim.sql"
+  ],
+  "evidence": {
+    "before": {
+      "file": "security/1e/evidence/results-1e2-before.json",
+      "sha256": "46caa5ce14cae47792a3a7d8092ab84e48c4626fe901fec95910ae8a59b7513c",
+      "summary": {
+        "total": 22,
+        "graded": 4,
+        "passed": 4,
+        "failed": 0,
+        "recursionSeen": false
+      },
+      "teardown": {
+        "residualRequests": 0,
+        "residualTransactions": 0,
+        "n0Removed": true,
+        "profilesRestored": true,
+        "clean": true
+      }
+    },
+    "after1E2A": {
+      "file": "security/1e/evidence/results-1e2a.json",
+      "sha256": "2ec76a88d41e1f99c03a83b638de282637e25e7cd10dced77b7e7ce1bfeaa75f",
+      "summary": {
+        "total": 22,
+        "graded": 22,
+        "passed": 22,
+        "failed": 0,
+        "recursionSeen": false
+      },
+      "teardown": {
+        "residualRequests": 0,
+        "residualTransactions": 0,
+        "n0Removed": true,
+        "profilesRestored": true,
+        "clean": true
+      }
+    },
+    "after1E2B": {
+      "file": "security/1e/evidence/results-1e2b.json",
+      "sha256": "6e66c9d256255f59752a06b2b74e8680c7fe24bec09bf545b2ba6e300df73eb5",
+      "summary": {
+        "total": 53,
+        "graded": 53,
+        "passed": 53,
+        "failed": 0,
+        "recursionSeen": false
+      },
+      "teardown": {
+        "residualRequests": 0,
+        "residualTransactions": 0,
+        "n0Removed": true,
+        "profilesRestored": true,
+        "clean": true
+      }
+    }
+  },
+  "matrixBeforeAfter": [
+    {
+      "id": "SEC-001",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "VULNERABILIDADE CONFIRMADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    },
+    {
+      "id": "SEC-002",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "VULNERABILIDADE CONFIRMADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    },
+    {
+      "id": "SEC-003",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "VULNERABILIDADE CONFIRMADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    },
+    {
+      "id": "SEC-004",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "VULNERABILIDADE CONFIRMADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    }
+  ],
+  "regressionGuards": [
+    {
+      "id": "SEC-005",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "BLOQUEADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    },
+    {
+      "id": "SEC-006",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "BLOQUEADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    },
+    {
+      "id": "SEC-007",
+      "baseline1C1": "VULNERABILIDADE CONFIRMADA",
+      "before1E2": "BLOQUEADA",
+      "after1E2A": "BLOQUEADA",
+      "after1E2B": "BLOQUEADA"
+    }
+  ],
+  "notes": [
+    "SEC-003/004 já aparecem BLOQUEADAS em 1E.2A como efeito colateral: UPDATE via PostgREST só alcança linhas visíveis por SELECT. O fechamento estrutural (UPDATE own-only + claim via RPC) é da 1E.2B.",
+    "Classificação 'BLOQUEADA' em SEC-001…004 equivale a CORRIGIDA nesta etapa."
+  ],
+  "controls": {
+    "clientOwn": [
+      {
+        "id": "A-10",
+        "operation": "C2 SELECT requests próprias (R1…R7)",
+        "result": "7 rows",
+        "pass": true
+      },
+      {
+        "id": "UI-04",
+        "operation": "dashboard N0 (feed + aceitar) e ClientDashboard C2 (próprias)",
+        "result": "N0 feed=0 claim=not_approved C2 own=7",
+        "pass": true
+      }
+    ],
+    "approvedNutritionistN1": [
+      {
+        "id": "A-02",
+        "operation": "SELECT diet_requests R1",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-03",
+        "operation": "SELECT diet_requests R2",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-05",
+        "operation": "SELECT diet_requests R3",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-06",
+        "operation": "SELECT diet_requests R4",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-07",
+        "operation": "SELECT diet_requests R5",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-14",
+        "operation": "N1 SELECT agregado (equivalente a fetchRequests do dashboard)",
+        "result": "R1,R2,R3,R4,R5",
+        "pass": true
+      },
+      {
+        "id": "B-04",
+        "operation": "N1 rpc claim_diet_request(R1 pending)",
+        "result": "claimed",
+        "pass": true
+      },
+      {
+        "id": "B-05",
+        "operation": "estado final R1 após claim",
+        "result": "status=in_review owner=N1 credits 5→4 txs=1",
+        "pass": true
+      },
+      {
+        "id": "B-06",
+        "operation": "N1 repete claim R1",
+        "result": "already_owned credits=4 txs=1",
+        "pass": true
+      },
+      {
+        "id": "B-11",
+        "operation": "N1 UPDATE legítimo (ai_draft/notes) de request própria",
+        "result": "OK",
+        "pass": true
+      },
+      {
+        "id": "B-11a",
+        "operation": "N1 claim R3 (in_review unclaimed)",
+        "result": "claimed status=in_review credits 5→5",
+        "pass": true
+      },
+      {
+        "id": "B-11b",
+        "operation": "N1 valida request própria (status → completed)",
+        "result": "completed",
+        "pass": true
+      },
+      {
+        "id": "B-11c",
+        "operation": "N1 SELECT completed próprio",
+        "result": "VISÍVEL",
+        "pass": true
+      }
+    ],
+    "unapprovedNutritionistN0": [
+      {
+        "id": "A-01",
+        "operation": "SELECT diet_requests R1",
+        "result": "0 rows",
+        "pass": true
+      },
+      {
+        "id": "B-03",
+        "operation": "rpc claim_diet_request(R1)",
+        "result": "NEGADO (not_approved)",
+        "pass": true
+      },
+      {
+        "id": "UI-04",
+        "operation": "dashboard N0 (feed + aceitar) e ClientDashboard C2 (próprias)",
+        "result": "N0 feed=0 claim=not_approved C2 own=7",
+        "pass": true
+      }
+    ],
+    "preassigned": [
+      {
+        "id": "A-03",
+        "operation": "SELECT diet_requests R2",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "A-04",
+        "operation": "SELECT diet_requests R2",
+        "result": "0 rows",
+        "pass": true
+      },
+      {
+        "id": "B-08",
+        "operation": "N1 claim R2 (assigned=N1)",
+        "result": "claimed",
+        "pass": true
+      },
+      {
+        "id": "B-09",
+        "operation": "N2 claim R2 (assigned=N1)",
+        "result": "not_eligible",
+        "pass": true
+      }
+    ],
+    "n1VsN2": [
+      {
+        "id": "A-08",
+        "operation": "SELECT diet_requests R6",
+        "result": "0 rows",
+        "pass": true
+      },
+      {
+        "id": "A-09",
+        "operation": "SELECT diet_requests R6",
+        "result": "VISÍVEL",
+        "pass": true
+      },
+      {
+        "id": "B-07",
+        "operation": "N2 tenta claim de R1 (já de N1)",
+        "result": "already_claimed",
+        "pass": true
+      },
+      {
+        "id": "B-14",
+        "operation": "N1 UPDATE R6 (de N2)",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "B-15",
+        "operation": "claim concorrente N1 × N2 em R1 (5 rodadas)",
+        "result": "1 vencedor em todas as rodadas",
+        "pass": true
+      },
+      {
+        "id": "B-21",
+        "operation": "após claim de N1: SELECT R1 por N2 e por N1",
+        "result": "N2=0 N1=1",
+        "pass": true
+      }
+    ],
+    "admin": [
+      {
+        "id": "A-11",
+        "operation": "A1 SELECT global (R1…R7)",
+        "result": "7 rows",
+        "pass": true
+      },
+      {
+        "id": "B-16",
+        "operation": "A1 SELECT global + UPDATE administrativo (R6.notes); A1 claim via RPC",
+        "result": "select=7 updated=true claimRpc=not_eligible",
+        "pass": true
+      }
+    ],
+    "anon": [
+      {
+        "id": "A-12",
+        "operation": "SELECT diet_requests R1",
+        "result": "0 rows",
+        "pass": true
+      }
+    ],
+    "realtime": [
+      {
+        "id": "RT-01",
+        "operation": "realtime postgres_changes UPDATE em R1/R2/R6 (service role)",
+        "result": "{\"N1\":[\"R1\",\"R2\"],\"N2\":[\"R1\",\"R6\"],\"C1\":[],\"C2\":[\"R1\",\"R2\",\"R6\"],\"P1\":[],\"N0\":[]}",
+        "pass": true
+      }
+    ],
+    "economic": [
+      {
+        "id": "B-05",
+        "operation": "estado final R1 após claim",
+        "result": "status=in_review owner=N1 credits 5→4 txs=1",
+        "pass": true
+      },
+      {
+        "id": "B-06",
+        "operation": "N1 repete claim R1",
+        "result": "already_owned credits=4 txs=1",
+        "pass": true
+      },
+      {
+        "id": "B-18",
+        "operation": "N1 (credits=0, basic) claim R1 pending",
+        "result": "insufficient_credits credits=0 txs=0",
+        "pass": true
+      },
+      {
+        "id": "B-19",
+        "operation": "N1 clinic claim R1 pending",
+        "result": "claimed credits=2 txs=[0]",
+        "pass": true
+      },
+      {
+        "id": "B-20a",
+        "operation": "N1 claim R4 (processing)",
+        "result": "claimed status=processing",
+        "pass": true
+      },
+      {
+        "id": "B-20b",
+        "operation": "N1 claim R5 (awaiting_validation)",
+        "result": "claimed status=awaiting_validation",
+        "pass": true
+      },
+      {
+        "id": "B-20c",
+        "operation": "N1 claim R7 (completed)",
+        "result": "not_eligible status=completed",
+        "pass": true
+      }
+    ],
+    "directClaimBlocked": [
+      {
+        "id": "B-10",
+        "operation": "N1 direct UPDATE R1 (unclaimed) nutritionist_id=N1",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "B-10b",
+        "operation": "N1 direct UPDATE R3 (unclaimed) nutritionist_id=N1",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "B-12",
+        "operation": "N1 UPDATE request própria nutritionist_id → N2",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "B-13",
+        "operation": "N1 UPDATE request própria nutritionist_id → NULL",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "UI-03",
+        "operation": "caminho legado pré-1E.2B de handleAcceptJob (UPDATE direto claim)",
+        "result": "BLOQUEADO",
+        "pass": true
+      }
+    ],
+    "uiSmoke": [
+      {
+        "id": "UI-01",
+        "operation": "handleAcceptJob: rpc claim → UPDATE client_data (own) → fetchRequests",
+        "result": "claim=claimed branded=1 feedR1=in_review credits 5→4 txs=1",
+        "pass": true
+      },
+      {
+        "id": "UI-02",
+        "operation": "Editar e Validar (in_review sem dono): ensureOwnedForWrite → save draft → handleApprove → histórico",
+        "result": "claim=claimed draft=1 approve=1 history=true credits 5→5",
+        "pass": true
+      },
+      {
+        "id": "UI-03",
+        "operation": "caminho legado pré-1E.2B de handleAcceptJob (UPDATE direto claim)",
+        "result": "BLOQUEADO",
+        "pass": true
+      },
+      {
+        "id": "UI-04",
+        "operation": "dashboard N0 (feed + aceitar) e ClientDashboard C2 (próprias)",
+        "result": "N0 feed=0 claim=not_approved C2 own=7",
+        "pass": true
+      }
+    ],
+    "no42P17": [
+      {
+        "id": "B-17",
+        "operation": "nenhum 42P17 em toda a suíte",
+        "result": "CLEAR",
+        "pass": true
+      }
+    ]
+  },
+  "typesTs": {
+    "changed": false,
+    "reason": "supabase gen types --local diverge amplamente do types.ts versionado (≈361 linhas: remove ai_usage_log/__InternalSupabase, adiciona community_posts/post_likes). RPC tipada localmente em src/services/dietRequestSecurityService.ts."
+  },
+  "immutableEvidenceSha256": {
+    "security/1c/evidence/results-1c1.json": "c4a60e1006877fa7ee450379f0fc9f8f878e6fde1066f5a0c83c6c059ae9fa71",
+    "security/1c/evidence/results-1d.json": "d919cff1c9751352a93fcc0da07d93bde9dbe7910477be9fbc4aa01deab45d21",
+    "security/1e/evidence/results-1e1a.json": "2cf4caf028c4b01accb1e1cf58b3c54c53da493a8d39307ae6541ad55fb6bdd3",
+    "security/1e/evidence/results-1e1b.json": "1cba3b4b585c83b4764a23e7511299f84521e8b8228c9c071b25e4541c967f13",
+    "security/1e/evidence/results-1e1-final.json": "748a1393b2ef43bee2c75460ba11ac47dc8023600c65644971e8f2f934ddd611",
+    "security/1e/evidence/results-1e1-matrix-rerun.json": "8ff105ec96a8130eef8a6102c627e167ed44ee8fb52d4a0c581c3f37df85a51a"
+  },
+  "residualRisk": [
+    "SEC-008 (transactions INSERT pelo usuário) — PENDENTE, fora de escopo",
+    "SEC-009 — PENDENTE, fora de escopo",
+    "SEC-010 — PENDENTE, fora de escopo",
+    "SEC-011 — PENDENTE, fora de escopo",
+    "Nutricionista dono ainda pode alterar client_id/assigned_nutritionist_id da própria request (WITH CHECK só fixa nutritionist_id).",
+    "INSERT de cliente ainda aceita nutritionist_id/status arbitrários (policy 'Clients can insert diet requests' só checa client_id).",
+    "consume_job_credit segue chamável diretamente pelo dono de request in_review (auto-débito; sem ganho para atacante).",
+    "anon mantém EXECUTE nas funções 1D/1E.1 (guardas auth.uid() tornam inócuo).",
+    "Deploy: nutricionistas com approved=false perdem acesso ao pool e ao histórico — aprovar profissionais ativos antes de aplicar.",
+    "Admin supremo não assume mais jobs pelo dashboard (RPC exige role nutritionist); reatribuição administrativa segue via policy admin.",
+    "CheckoutModal (fluxo de pagamento simulado) não consegue mais atualizar status da própria request (cliente sem policy UPDATE).",
+    "Linha residual do harness 1C (notes SECURITY_1C_SEC003_CLIENT_CLAIM, nutritionist_id=C1) preservada intacta no banco local."
+  ],
+  "pendingNotFixed": [
+    "SEC-008",
+    "SEC-009",
+    "SEC-010",
+    "SEC-011"
+  ],
+  "readyForNextStage": true
+}

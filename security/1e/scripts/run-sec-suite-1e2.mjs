@@ -997,6 +997,8 @@ async function main() {
     // RT-01: realtime não entrega linhas bloqueadas por RLS
     {
       await resetWorld();
+      // eventos WAL do reset podem chegar após o SUBSCRIBE
+      await sleep(3000);
       const listeners = ["N1", "N2", "C1", "C2", "P1", "N0"];
       const received = Object.fromEntries(listeners.map((k) => [k, new Set()]));
       const channels = [];
@@ -1039,9 +1041,20 @@ async function main() {
         P1: [],
         N0: [],
       };
+      // RLS-visíveis no baseline: qualquer evento fora disto é vazamento
+      const allowed = {
+        N1: ["R1", "R2", "R3", "R4", "R5"],
+        N2: ["R1", "R3", "R4", "R5", "R6"],
+        C1: [],
+        C2: ["R1", "R2", "R3", "R4", "R5", "R6", "R7"],
+        P1: [],
+        N0: [],
+      };
       const allSubscribed = Object.values(subscribed).every((s) => s === "SUBSCRIBED");
-      const eq = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
-      const pass = allSubscribed && listeners.every((k) => eq(got[k], expected[k]));
+      const leaks = Object.fromEntries(listeners.map((k) => [k, got[k].filter((x) => !allowed[k].includes(x))]));
+      const missing = Object.fromEntries(listeners.map((k) => [k, expected[k].filter((x) => !got[k].includes(x))]));
+      const pass =
+        allSubscribed && listeners.every((k) => leaks[k].length === 0 && missing[k].length === 0);
       record({
         id: "RT-01",
         identity: listeners.join(","),
@@ -1049,10 +1062,146 @@ async function main() {
         approved: null,
         operation: "realtime postgres_changes UPDATE em R1/R2/R6 (service role)",
         rows: null,
-        httpOrSql: { subscribed, received: got, expected },
-        expectation: "cada identidade recebe apenas linhas visíveis por RLS",
+        httpOrSql: { subscribed, received: got, expected, allowed, leaks, missing },
+        expectation: "cada identidade recebe os UPDATEs esperados e nenhuma linha fora do RLS",
         result: allSubscribed ? JSON.stringify(got) : "SUBSCRIBE TIMEOUT",
         pass: allSubscribed ? pass : null,
+        teardown: "OK",
+      });
+    }
+
+    // UI-SMOKE: replay das chamadas do NutritionistDashboard/ClientDashboard pós-1E.2B
+    {
+      await resetWorld();
+      const n1 = await session("N1");
+      const credBefore = (await getProfile("N1")).credits;
+      const { data: claim, error: eClaim } = await n1.rpc("claim_diet_request", { p_request_id: R["R1"] });
+      const { data: branded, error: eBrand } = await n1
+        .from("diet_requests")
+        .update({ client_data: { fullName: "Fixture R1", notes: `${MARKER} — synthetic`, clinicBranding: { professionalTier: "basic" } } })
+        .eq("id", R["R1"])
+        .eq("nutritionist_id", U.N1.userId)
+        .select("id");
+      const { data: feed } = await n1.from("diet_requests").select("*").order("created_at", { ascending: false });
+      const r1 = (feed ?? []).find((r) => r.id === R["R1"]);
+      const credAfter = (await getProfile("N1")).credits;
+      const txs = await countJobTxs("R1");
+      record({
+        id: "UI-01",
+        identity: "N1",
+        role: "nutritionist",
+        approved: true,
+        ...requestMeta("R1", await getRequest("R1")),
+        operation: "handleAcceptJob: rpc claim → UPDATE client_data (own) → fetchRequests",
+        rows: branded?.length ?? 0,
+        httpOrSql: { claim, claimError: summarizeError(eClaim), brandError: summarizeError(eBrand) },
+        expectation: "claimed; branding gravado; R1 in_review/N1 no feed; 1 débito",
+        result: `claim=${claim?.status} branded=${branded?.length ?? 0} feedR1=${r1?.status ?? "none"} credits ${credBefore}→${credAfter} txs=${txs.length}`,
+        pass:
+          claim?.status === "claimed" &&
+          (branded?.length ?? 0) === 1 &&
+          r1?.status === "in_review" &&
+          r1?.nutritionist_id === U.N1.userId &&
+          credAfter === credBefore - 1 &&
+          txs.length === 1,
+        teardown: "OK",
+        errors: [eClaim, eBrand],
+      });
+    }
+
+    {
+      await resetWorld();
+      const n1 = await session("N1");
+      const credBefore = (await getProfile("N1")).credits;
+      const { data: claim } = await n1.rpc("claim_diet_request", { p_request_id: R["R3"] });
+      const { data: draft, error: eDraft } = await n1
+        .from("diet_requests")
+        .update({ ai_draft: "# plano sintético" })
+        .eq("id", R["R3"])
+        .eq("nutritionist_id", U.N1.userId)
+        .select("id");
+      const { data: approved, error: eAp } = await n1
+        .from("diet_requests")
+        .update({ status: "completed", notes: `${MARKER}:R3` })
+        .eq("id", R["R3"])
+        .eq("nutritionist_id", U.N1.userId)
+        .select("id");
+      const { data: history } = await n1
+        .from("diet_requests")
+        .select("id")
+        .eq("nutritionist_id", U.N1.userId)
+        .eq("status", "completed");
+      const credAfter = (await getProfile("N1")).credits;
+      const inHistory = (history ?? []).some((r) => r.id === R["R3"]);
+      record({
+        id: "UI-02",
+        identity: "N1",
+        role: "nutritionist",
+        approved: true,
+        ...requestMeta("R3", await getRequest("R3")),
+        operation: "Editar e Validar (in_review sem dono): ensureOwnedForWrite → save draft → handleApprove → histórico",
+        rows: approved?.length ?? 0,
+        httpOrSql: { claim, draftError: summarizeError(eDraft), approveError: summarizeError(eAp) },
+        expectation: "claim gratuito; draft e aprovação gravam 1 linha; R3 no histórico; sem débito",
+        result: `claim=${claim?.status} draft=${draft?.length ?? 0} approve=${approved?.length ?? 0} history=${inHistory} credits ${credBefore}→${credAfter}`,
+        pass:
+          claim?.status === "claimed" &&
+          (draft?.length ?? 0) === 1 &&
+          (approved?.length ?? 0) === 1 &&
+          inHistory &&
+          credAfter === credBefore,
+        teardown: "OK",
+        errors: [eDraft, eAp],
+      });
+    }
+
+    {
+      await resetWorld();
+      const n1 = await session("N1");
+      const { data, error } = await n1
+        .from("diet_requests")
+        .update({ status: "in_review", nutritionist_id: U.N1.userId })
+        .eq("id", R["R1"])
+        .eq("status", "pending")
+        .select()
+        .single();
+      const after = await getRequest("R1");
+      record({
+        id: "UI-03",
+        identity: "N1",
+        role: "nutritionist",
+        approved: true,
+        ...requestMeta("R1", after),
+        operation: "caminho legado pré-1E.2B de handleAcceptJob (UPDATE direto claim)",
+        rows: data ? 1 : 0,
+        httpOrSql: { error: summarizeError(error) },
+        expectation: "0 linhas; R1 inalterado",
+        result: data ? "CLAIM EFETIVADO" : "BLOQUEADO",
+        pass: !data && reqIsBaseline("R1", after),
+        teardown: "OK",
+        errors: [error],
+      });
+    }
+
+    {
+      await resetWorld();
+      const n0 = await session("N0");
+      const { data: feed } = await n0.from("diet_requests").select("id");
+      const fixtureRows = (feed ?? []).filter((r) => Object.values(R).includes(r.id)).length;
+      const { data: claim } = await n0.rpc("claim_diet_request", { p_request_id: R["R1"] });
+      const c2 = await session("C2");
+      const { data: own } = await c2.from("diet_requests").select("id").eq("client_id", U.C2.userId);
+      const ownFixtures = (own ?? []).filter((r) => Object.values(R).includes(r.id)).length;
+      record({
+        id: "UI-04",
+        identity: "N0/C2",
+        role: "mixed",
+        approved: null,
+        operation: "dashboard N0 (feed + aceitar) e ClientDashboard C2 (próprias)",
+        rows: fixtureRows,
+        expectation: "N0: feed vazio, claim not_approved; C2: 7 próprias",
+        result: `N0 feed=${fixtureRows} claim=${claim?.status} C2 own=${ownFixtures}`,
+        pass: fixtureRows === 0 && claim?.status === "not_approved" && ownFixtures === 7 && reqIsBaseline("R1", await getRequest("R1")),
         teardown: "OK",
       });
     }
