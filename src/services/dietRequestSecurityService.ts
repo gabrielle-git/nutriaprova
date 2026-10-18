@@ -33,3 +33,26 @@ export async function claimDietRequest(requestId: string): Promise<ClaimDietRequ
   if (error) throw error;
   return data as ClaimDietRequestResult;
 }
+
+export type AiCorrectionKind = "draft" | "markdown";
+
+/**
+ * Registra uso de correção IA via RPC `record_ai_correction_usage` (1E.3A).
+ * user_id, amount, type e description são derivados no servidor; INSERT
+ * direto em transactions não é mais permitido a authenticated.
+ */
+export async function recordAiCorrectionUsage(
+  requestId: string,
+  kind: AiCorrectionKind,
+): Promise<{ error: { message: string } | null }> {
+  // `record_ai_correction_usage` ainda não está em types.ts (regeneração local diverge além do escopo).
+  const rpc = supabase.rpc as unknown as (
+    fn: "record_ai_correction_usage",
+    args: { p_request_id: string; p_correction_kind: AiCorrectionKind },
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  const { error } = await rpc.call(supabase, "record_ai_correction_usage", {
+    p_request_id: requestId,
+    p_correction_kind: kind,
+  });
+  return { error };
+}

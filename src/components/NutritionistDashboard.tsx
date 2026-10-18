@@ -56,6 +56,7 @@ import { toast } from "sonner";
 import { adjustDietWithAI, adjustMarkdownWithAI, type DietPlan, type ClientData, type Meal } from "@/services/n8nService";
 import { jobCoinCost, type PlanTier, type TierConfig, canUseAI, getTierConfig } from "@/hooks/usePlanTier";
 import type { Database, Json } from "@/integrations/supabase/types";
+import type { AiCorrectionKind } from "@/services/dietRequestSecurityService";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 
 import SignatureEditor from "./SignatureEditor";
@@ -100,6 +101,17 @@ async function fetchAiCorrectionsTodayCount(userId: string): Promise<number> {
     return 0;
   }
   return count ?? 0;
+}
+
+/** Falha de registro não deve derrubar a correção IA já gravada no rascunho. */
+async function logAiCorrectionUsage(requestId: string, kind: AiCorrectionKind, tag: string): Promise<void> {
+  try {
+    const { recordAiCorrectionUsage } = await import("@/services/dietRequestSecurityService");
+    const { error } = await recordAiCorrectionUsage(requestId, kind);
+    if (error) console.warn(tag, error.message);
+  } catch (e) {
+    console.warn(tag, e);
+  }
 }
 
 /** `client_data` JSON no banco — pode incluir campos além do contrato n8n. */
@@ -1342,13 +1354,7 @@ export default function NutritionistDashboard() {
       if (upErr) throw upErr;
 
       if (!isSupreme && cfg.aiCorrectionsPerDay !== "unlimited") {
-        const { error: txErr } = await supabase.from("transactions").insert({
-          user_id: user.id,
-          amount: 0,
-          type: AI_CORRECTION_TX_TYPE,
-          description: `Correção IA (rascunho) — pedido ${selectedRequest.id.slice(0, 8)}`,
-        });
-        if (txErr) console.warn("[NutritionistDashboard] ai_correction tx:", txErr.message);
+        await logAiCorrectionUsage(owned.id, "draft", "[NutritionistDashboard] ai_correction tx:");
       }
 
       setSelectedRequest({ ...owned, ai_draft: newDraft as unknown as Json });
@@ -1420,13 +1426,7 @@ export default function NutritionistDashboard() {
 
       // Registra uso no histórico de transações (respeita limite do tier)
       if (!isSupreme && cfg.aiCorrectionsPerDay !== "unlimited") {
-        const { error: txErr } = await supabase.from("transactions").insert({
-          user_id: user.id,
-          amount: 0,
-          type: AI_CORRECTION_TX_TYPE,
-          description: `Correção IA (markdown) — pedido ${selectedRequest.id.slice(0, 8)}`,
-        });
-        if (txErr) console.warn("[handleAIAdjustMarkdown] tx:", txErr.message);
+        await logAiCorrectionUsage(owned.id, "markdown", "[handleAIAdjustMarkdown] tx:");
         setAiCorrectionsToday((n) => n + 1);
       }
 
